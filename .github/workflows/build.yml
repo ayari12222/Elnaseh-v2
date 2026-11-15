@@ -31,7 +31,7 @@ jobs:
 
       - name: Disable Lint
         run: |
-          echo "android { lint { checkReleaseBuilds false; abortOnError false } }" >> android/app/build.gradle
+          sed -i 's/android {/android {\n    lint { checkReleaseBuilds false; abortOnError false }/' android/app/build.gradle
 
       - name: Build APK
         run: flutter build apk --release
