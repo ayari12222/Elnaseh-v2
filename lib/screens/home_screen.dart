@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:torch_light/torch_light.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -9,8 +11,32 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
+  bool _isSOSActive = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // بيانات وهمية لتجربة التصميم
+  void _toggleSOS() async {
+    if (_isSOSActive) {
+      await _audioPlayer.stop();
+      try { await TorchLight.disableTorch(); } catch (e) {}
+      setState(() => _isSOSActive = false);
+    } else {
+      setState(() => _isSOSActive = true);
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      try {
+        await TorchLight.enableTorch();
+      } catch (e) {
+        print('الفلاش غير متوفر: $e');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    TorchLight.disableTorch();
+    super.dispose();
+  }
+
   final List<Map<String, String>> _posts = [
     {
       'image': 'https://picsum.photos/400/200?random=1',
@@ -33,15 +59,17 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text(
-          'الناصح',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        title: Text(
+          _isSOSActive ? '🚨 وضع الطوارئ نشط 🚨' : 'الناصح',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: _isSOSActive ? Colors.red : Colors.white,
+          ),
         ),
         backgroundColor: const Color(0xFF1E1E1E),
         elevation: 0,
         centerTitle: false,
         actions: [
-          // زر الإعدادات (بدون ترجمة حالياً)
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             onPressed: () {},
@@ -60,7 +88,6 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // الصورة
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   child: Image.network(
@@ -75,13 +102,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                 ),
-                // المحتوى
                 Padding(
                   padding: const EdgeInsets.all(12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // شريط التصنيف
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
@@ -94,7 +119,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 8),
-                      // اسم الناشر
                       Row(
                         children: [
                           Text(
@@ -106,7 +130,6 @@ class _HomeScreenState extends State<HomeScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      // النص
                       Text(
                         post['text']!,
                         style: const TextStyle(color: Colors.white70),
@@ -132,11 +155,11 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {},
-        backgroundColor: const Color(0xFFD32F2F),
-        child: const Text(
-          'SOS',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        onPressed: _toggleSOS,
+        backgroundColor: _isSOSActive ? Colors.red : const Color(0xFFD32F2F),
+        child: Text(
+          _isSOSActive ? 'إيقاف' : 'SOS',
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
