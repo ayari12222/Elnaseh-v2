@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'screens/home_screen.dart';
 
 void main() {
@@ -27,6 +28,7 @@ class MyApp extends StatelessWidget {
             fontFamily: 'Cairo',
           ),
           localizationsDelegates: const [
+            AppLocalizations.delegate, // هذا هو المفتاح
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
             GlobalCupertinoLocalizations.delegate,
@@ -36,7 +38,7 @@ class MyApp extends StatelessWidget {
             Locale('fr'),
             Locale('en'),
           ],
-          locale: locale, // اللغة الحالية
+          locale: locale,
           home: const HomeScreen(),
         );
       },
