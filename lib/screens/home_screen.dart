@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../main.dart'; // لاستيراد appLocale
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -42,19 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
         elevation: 0,
         centerTitle: false,
         actions: [
-          // زر تغيير اللغة
-          PopupMenuButton<Locale>(
-            icon: const Icon(Icons.language, color: Colors.white),
-            onSelected: (Locale locale) {
-              appLocale.value = locale; // تغيير اللغة
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: Locale('ar'), child: Text('العربية')),
-              PopupMenuItem(value: Locale('fr'), child: Text('Français')),
-              PopupMenuItem(value: Locale('en'), child: Text('English')),
-            ],
-          ),
-          // زر الإعدادات
+          // زر الإعدادات (بدون ترجمة حالياً)
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white),
             onPressed: () {},
