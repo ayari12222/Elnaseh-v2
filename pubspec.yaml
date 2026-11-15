@@ -1,3 +1,4 @@
+
 name: elnaseh_app
 description: تطبيق الناصح للتواصل بدون إنترنت
 publish_to: 'none'
@@ -9,9 +10,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_localizations:
-    sdk: flutter
-  intl: any
 
 dev_dependencies:
   flutter_test:
