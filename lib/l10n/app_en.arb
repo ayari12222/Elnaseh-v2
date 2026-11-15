@@ -1,0 +1,12 @@
+{
+  "@@locale": "en",
+  "appTitle": "Elnaseh",
+  "posts": "Posts",
+  "chat": "Chat",
+  "peers": "Devices",
+  "sos": "SOS",
+  "urgent": "Urgent",
+  "info": "Info",
+  "settings": "Settings",
+  "language": "Language"
+}
