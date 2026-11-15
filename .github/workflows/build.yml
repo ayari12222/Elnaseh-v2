@@ -29,12 +29,10 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Disable Lint
-        run: |
-          sed -i 's/android {/android {\n    lint { checkReleaseBuilds false; abortOnError false }/' android/app/build.gradle
-
       - name: Build APK
         run: flutter build apk --release
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false -Dlint.skip=true"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
