@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'package:torch_light/torch_light.dart';
 
 class HomeScreenNew extends StatefulWidget {
   const HomeScreenNew({super.key});
@@ -11,9 +9,6 @@ class HomeScreenNew extends StatefulWidget {
 
 class _HomeScreenNewState extends State<HomeScreenNew> {
   int _currentIndex = 0;
-  bool _isSOSActive = false;
-  final AudioPlayer _audioPlayer = AudioPlayer();
-  
   String _selectedCategory = 'الكل';
   final List<String> _categories = ['الكل', 'عاجل', 'معلومات', 'تحذير'];
   final PageController _pageController = PageController();
@@ -56,30 +51,6 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
 
-  void _toggleSOS() async {
-    if (_isSOSActive) {
-      await _audioPlayer.stop();
-      try { await TorchLight.disableTorch(); } catch (e) {}
-      setState(() => _isSOSActive = false);
-    } else {
-      setState(() => _isSOSActive = true);
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      try {
-        await TorchLight.enableTorch();
-      } catch (e) {
-        print('الفلاش غير متوفر: $e');
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _audioPlayer.dispose();
-    TorchLight.disableTorch();
-    _pageController.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -105,14 +76,26 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
             const Icon(Icons.shield, color: Colors.blueAccent, size: 28),
             const SizedBox(width: 8),
             IconButton(
-              icon: Icon(Icons.warning, color: _isSOSActive ? Colors.red : Colors.redAccent),
-              onPressed: _toggleSOS,
+              icon: const Icon(Icons.warning, color: Colors.redAccent),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('SOS قيد التطوير...')),
+                );
+              },
             ),
             IconButton(
               icon: const Icon(Icons.radar, color: Colors.white),
               onPressed: () {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('الرادار قيد التطوير...')),
+                );
+              },
+            ),
+            IconButton(
+              icon: const Icon(Icons.bluetooth, color: Colors.blue),
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('البلوتوث قيد التطوير...')),
                 );
               },
             ),
@@ -147,11 +130,15 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _toggleSOS,
-        backgroundColor: _isSOSActive ? Colors.red : const Color(0xFFD32F2F),
-        child: Text(
-          _isSOSActive ? 'إيقاف' : 'SOS',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        onPressed: () {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('SOS قيد التطوير...')),
+          );
+        },
+        backgroundColor: const Color(0xFFD32F2F),
+        child: const Text(
+          'SOS',
+          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
@@ -234,6 +221,8 @@ class _HomeScreenNewState extends State<HomeScreenNew> {
               _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
               const SizedBox(height: 16),
               _buildActionButton(Icons.share, 'مشاركة', Colors.white),
+              const SizedBox(height: 16),
+              _buildActionButton(Icons.bookmark, 'حفظ', Colors.white),
             ],
           ),
         ),
