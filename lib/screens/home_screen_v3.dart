@@ -79,71 +79,55 @@ class _HomeScreenV3State extends State<HomeScreenV3> {
                 );
               },
             ),
-            IconButton(
-              icon: const Icon(Icons.bluetooth, color: Colors.blue),
-              onPressed: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('البلوتوث قيد التطوير...')),
-                );
-              },
-            ),
           ],
         ),
         actions: [
+          // زر 3 شلطات (المواضيع)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onSelected: (String value) {
+              setState(() => _selectedCategory = value);
+            },
+            itemBuilder: (context) => _categories.map((String category) {
+              return PopupMenuItem<String>(
+                value: category,
+                child: Text(category),
+              );
+            }).toList(),
+          ),
+          // زر 3 نقاط (خيارات إضافية)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.white),
+            onSelected: (String value) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('$value قيد التطوير...')),
+              );
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'الإعدادات', child: Text('الإعدادات')),
+              PopupMenuItem(value: 'حول التطبيق', child: Text('حول التطبيق')),
+              PopupMenuItem(value: 'مساعدة', child: Text('مساعدة')),
+            ],
+          ),
+          // زر الإشعارات
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white),
-            onPressed: () {},
+            icon: const Icon(Icons.notifications, color: Colors.white),
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('الإشعارات قيد التطوير...')),
+              );
+            },
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // شريط التصنيفات الأفقي (مثل تيك توك)
-          Container(
-            height: 50,
-            color: const Color(0xFF1E1E1E),
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: _categories.length,
-              itemBuilder: (context, index) {
-                final category = _categories[index];
-                final isSelected = _selectedCategory == category;
-                return GestureDetector(
-                  onTap: () {
-                    setState(() => _selectedCategory = category);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    margin: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      category,
-                      style: TextStyle(
-                        color: isSelected ? Colors.black : Colors.grey,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          // قائمة المنشورات
-          Expanded(
-            child: PageView.builder(
-              controller: _pageController,
-              scrollDirection: Axis.vertical,
-              itemCount: _filteredPosts.length,
-              itemBuilder: (context, index) {
-                final post = _filteredPosts[index];
-                return _buildPost(post);
-              },
-            ),
-          ),
-        ],
+      body: PageView.builder(
+        controller: _pageController,
+        scrollDirection: Axis.vertical,
+        itemCount: _filteredPosts.length,
+        itemBuilder: (context, index) {
+          final post = _filteredPosts[index];
+          return _buildPost(post);
+        },
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
