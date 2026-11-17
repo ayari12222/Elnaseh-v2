@@ -1,5 +1,5 @@
 name: elnaseh_app
-description: تطبيق الناجح للتواصل بدون إنترنت
+description: تطبيق الناصح للتواصل بدون إنترنت
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -19,3 +19,6 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
