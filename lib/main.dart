@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen_v5.dart';
+import 'screens/home_screen_v6.dart';
 
 void main() {
   runApp(const MyApp());
@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF121212),
         fontFamily: 'Cairo',
       ),
-      home: const HomeScreenV5(),
+      home: const HomeScreenV6(),
     );
   }
 }
