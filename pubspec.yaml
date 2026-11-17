@@ -1,5 +1,5 @@
-name: elnaseh
-description: "A new Flutter project."
+name: elnaseh_app
+description: تطبيق الناصح للتواصل بدون إنترنت
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -9,9 +9,11 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  
-  # تم تعديل هذا الإصدار ليتوافق تماماً مع بيئة البناء ويحل المشكلة
-  font_awesome_flutter: ^10.7.0 
+  audioplayers: ^6.0.0
+  torch_light: ^1.1.0
+  share_plus: 7.2.0      # <--- تم تثبيت الإصدار بالضبط
+  image_gallery_saver: ^2.0.3
+  supabase_flutter: ^2.5.0
 
 dev_dependencies:
   flutter_test:
