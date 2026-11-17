@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen_v3.dart';
+import 'screens/home_screen_v5.dart';
 
 void main() {
   runApp(const MyApp());
@@ -11,7 +11,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'الناصح',
+      title: 'زلزول',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         brightness: Brightness.dark,
@@ -19,7 +19,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: const Color(0xFF121212),
         fontFamily: 'Cairo',
       ),
-      home: const HomeScreenV3(),
+      home: const HomeScreenV5(),
     );
   }
 }
