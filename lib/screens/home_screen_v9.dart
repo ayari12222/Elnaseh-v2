@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:torch_light/torch_light.dart';
-import 'package:flutter/services.dart'; // للاهتزاز
+import 'package:flutter/services.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -17,7 +18,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   final List<String> _categories = ['الكل', 'عاجل', 'معلومات', 'تحذير'];
   final PageController _pageController = PageController();
   
-  // متغير لحالة SOS
   bool _isSosActive = false;
 
   final List<Map<String, dynamic>> _allPosts = [
@@ -58,30 +58,94 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
 
-  // دالة تفعيل/إيقاف SOS (فلاش + اهتزاز)
-  Future<void> _toggleSos() async {
-    try {
-      if (!_isSosActive) {
-        // 1. تشغيل الفلاش
-        await TorchLight.enableTorch();
-        
-        // 2. الاهتزاز القوي
-        HapticFeedback.heavyImpact();
+  // دالة إظهار نافذة طلب الإذن الأنيقة
+  Future<bool> _showPermissionDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(
+          children: [
+            Icon(Icons.flash_on, color: Colors.amber, size: 30),
+            SizedBox(width: 10),
+            Text(
+              'تفعيل الفلاش للطوارئ',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        content: const Text(
+          'لتشغيل الفلاش تلقائياً في حالات الطوارئ، يرجى السماح للتطبيق بالوصول إلى الكاميرا.\n\n'
+          'هذا الإذن يُطلب مرة واحدة فقط ولن يتم استخدامه إلا لتشغيل الفلاش.',
+          style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('لاحقاً', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('السماح', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
 
+  Future<void> _toggleSos() async {
+    // 1. الاهتزاز القوي (يعمل فوراً)
+    HapticFeedback.heavyImpact();
+
+    if (!_isSosActive) {
+      // 2. التحقق من إذن الكاميرا
+      var status = await Permission.camera.status;
+      
+      if (!status.isGranted) {
+        // إظهار النافذة الأنيقة أولاً
+        bool? userWantsPermission = await _showPermissionDialog();
+        
+        if (userWantsPermission == true) {
+          status = await Permission.camera.request();
+        } else {
+          // إذا رفض المستخدم النافذة، نوقف العملية
+          return;
+        }
+      }
+
+      if (status.isGranted) {
+        // 3. تشغيل الفلاش
+        try {
+          await TorchLight.enableTorch();
+        } catch (e) {
+          debugPrint("الفلاش غير مدعوم: $e");
+        }
         setState(() => _isSosActive = true);
       } else {
-        // إيقاف الفلاش
-        await TorchLight.disableTorch();
-        
-        // اهتزاز خفيف عند الإيقاف
-        HapticFeedback.lightImpact();
-        
-        setState(() => _isSosActive = false);
+        // إذا رفض الإذن من النظام
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('تم رفض إذن الكاميرا. لا يمكن تشغيل الفلاش.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
       }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('خطأ في SOS: $e')),
-      );
+    } else {
+      // إيقاف الفلاش
+      try {
+        await TorchLight.disableTorch();
+      } catch (e) {
+        debugPrint("خطأ في إيقاف الفلاش: $e");
+      }
+      
+      HapticFeedback.lightImpact();
+      setState(() => _isSosActive = false);
     }
   }
 
@@ -110,7 +174,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             _buildCircleIcon(Icons.shield, Colors.blueAccent, () {}),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.warning, Colors.redAccent, () {
-              _toggleSos(); // ربط زر التحذير بدالة SOS
+              _toggleSos();
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
@@ -170,7 +234,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: _toggleSos, // ربط الزر بدالة SOS
+        onPressed: _toggleSos,
         backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F),
         child: Text(
           _isSosActive ? 'إيقاف' : 'SOS',
