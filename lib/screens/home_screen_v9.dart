@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:torch_light/torch_light.dart';
+import 'package:flutter/services.dart'; // للاهتزاز
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -14,6 +16,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   String _selectedCategory = 'الكل';
   final List<String> _categories = ['الكل', 'عاجل', 'معلومات', 'تحذير'];
   final PageController _pageController = PageController();
+  
+  // متغير لحالة SOS
+  bool _isSosActive = false;
 
   final List<Map<String, dynamic>> _allPosts = [
     {
@@ -53,6 +58,33 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
 
+  // دالة تفعيل/إيقاف SOS (فلاش + اهتزاز)
+  Future<void> _toggleSos() async {
+    try {
+      if (!_isSosActive) {
+        // 1. تشغيل الفلاش
+        await TorchLight.enableTorch();
+        
+        // 2. الاهتزاز القوي
+        HapticFeedback.heavyImpact();
+
+        setState(() => _isSosActive = true);
+      } else {
+        // إيقاف الفلاش
+        await TorchLight.disableTorch();
+        
+        // اهتزاز خفيف عند الإيقاف
+        HapticFeedback.lightImpact();
+        
+        setState(() => _isSosActive = false);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('خطأ في SOS: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -78,9 +110,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             _buildCircleIcon(Icons.shield, Colors.blueAccent, () {}),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.warning, Colors.redAccent, () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('SOS قيد التطوير...')),
-              );
+              _toggleSos(); // ربط زر التحذير بدالة SOS
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
@@ -140,15 +170,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('SOS قيد التطوير...')),
-          );
-        },
-        backgroundColor: const Color(0xFFD32F2F),
-        child: const Text(
-          'SOS',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        onPressed: _toggleSos, // ربط الزر بدالة SOS
+        backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F),
+        child: Text(
+          _isSosActive ? 'إيقاف' : 'SOS',
+          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
         ),
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
