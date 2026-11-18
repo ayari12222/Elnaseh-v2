@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "stable" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -21,17 +21,24 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
           flutter-version: '3.27.0'
+          channel: 'stable'  # هذا هو السطر الذي تبحث عنه
 
       - name: Generate Android Files
         run: flutter create --platforms=android .
+
+      - name: Add Camera and Flash Permissions
+        run: |
+          MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" />\n    <uses-feature android:name="android.hardware.camera.flash" />' "$MANIFEST_FILE"
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Build APK
         run: flutter build apk --release
+        env:
+          GRADLE_OPTS: "-Dorg.gradle.jvmargs=-Xmx2048m -Dorg.gradle.daemon=false -Dlint.skip=true"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
