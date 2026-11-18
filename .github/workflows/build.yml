@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "stable" ]
   workflow_dispatch:
 
 jobs:
@@ -23,13 +23,6 @@ jobs:
         with:
           channel: 'stable'
           flutter-version: '3.27.0'
-
-      - name: Create Flutter Project
-        run: flutter create --org com.example --project-name elnaseh_app .
-
-      - name: Set minSdkVersion to 23
-        run: |
-          sed -i 's/minSdkVersion 21/minSdkVersion 23/' android/app/build.gradle
 
       - name: Get dependencies
         run: flutter pub get
