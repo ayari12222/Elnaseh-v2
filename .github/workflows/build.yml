@@ -22,16 +22,19 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.27.0'
-          channel: 'stable'  # هذا هو السطر الذي تبحث عنه
+          channel: 'stable'  # <--- هذا هو السطر الذي تبحث عنه
 
+      # 1. إنشاء مجلد android وملف AndroidManifest.xml
       - name: Generate Android Files
         run: flutter create --platforms=android .
 
+      # 2. إضافة الصلاحيات إلى الملف الذي تم إنشاؤه
       - name: Add Camera and Flash Permissions
         run: |
           MANIFEST_FILE="android/app/src/main/AndroidManifest.xml"
           sed -i '/<application/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-feature android:name="android.hardware.camera" />\n    <uses-feature android:name="android.hardware.camera.flash" />' "$MANIFEST_FILE"
 
+      # 3. تحميل المكتبات وبناء التطبيق
       - name: Get dependencies
         run: flutter pub get
 
