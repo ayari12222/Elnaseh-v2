@@ -11,11 +11,11 @@ dependencies:
     sdk: flutter
   audioplayers: ^6.0.0
   torch_light: ^1.1.0
-  share_plus: 7.2.0
+  share_plus: ^10.0.0
+  permission_handler: ^11.3.0
+  font_awesome_flutter: ^10.7.0
   image_gallery_saver_plus: ^4.0.1
   supabase_flutter: ^2.5.0
-  font_awesome_flutter: ^10.7.0
-  permission_handler: ^11.3.1
 
 dev_dependencies:
   flutter_test:
