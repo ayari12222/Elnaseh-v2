@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:torch_light/torch_light.dart';
@@ -19,6 +20,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   final PageController _pageController = PageController();
   
   bool _isSosActive = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<Map<String, dynamic>> _allPosts = [
     {
@@ -58,7 +60,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
 
-  // دالة إظهار نافذة طلب الإذن الأنيقة
   Future<bool> _showPermissionDialog() async {
     return await showDialog<bool>(
       context: context,
@@ -100,53 +101,57 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Future<void> _toggleSos() async {
-    // 1. الاهتزاز القوي (يعمل فوراً)
     HapticFeedback.heavyImpact();
 
     if (!_isSosActive) {
-      // 2. التحقق من إذن الكاميرا
       var status = await Permission.camera.status;
       
       if (!status.isGranted) {
-        // إظهار النافذة الأنيقة أولاً
         bool? userWantsPermission = await _showPermissionDialog();
         
         if (userWantsPermission == true) {
           status = await Permission.camera.request();
         } else {
-          // إذا رفض المستخدم النافذة، نوقف العملية
           return;
         }
       }
 
       if (status.isGranted) {
-        // 3. تشغيل الفلاش
         try {
           await TorchLight.enableTorch();
         } catch (e) {
           debugPrint("الفلاش غير مدعوم: $e");
         }
-        setState(() => _isSosActive = true);
-      } else {
-        // إذا رفض الإذن من النظام
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('تم رفض إذن الكاميرا. لا يمكن تشغيل الفلاش.'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
       }
+      
+      try {
+        await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+        await _audioPlayer.play(AssetSource('military-siren.mp3'));
+      } catch (e) {
+        debugPrint("خطأ في تشغيل الصوت: $e");
+      }
+
+      setState(() => _isSosActive = true);
+
     } else {
-      // إيقاف الفلاش
       try {
         await TorchLight.disableTorch();
       } catch (e) {
         debugPrint("خطأ في إيقاف الفلاش: $e");
       }
       
+      await _audioPlayer.stop();
       HapticFeedback.lightImpact();
       setState(() => _isSosActive = false);
     }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer.dispose();
+    TorchLight.disableTorch();
+    _pageController.dispose();
+    super.dispose();
   }
 
   @override
@@ -179,7 +184,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('الرادار (Wi-Fi Direct) قيد التطوير...')),
+                const SnackBar(content: Text('الرادار قيد التطوير...')),
               );
             }),
             const SizedBox(width: 8),
