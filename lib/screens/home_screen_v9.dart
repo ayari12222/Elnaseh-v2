@@ -4,6 +4,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:audioplayers/audioplayers.dart'; // تم إضافة مكتبة الصوت
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -19,6 +20,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   final PageController _pageController = PageController();
   
   bool _isSosActive = false;
+  
+  // تعريف مشغل الصوت
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<Map<String, dynamic>> _allPosts = [
     {
@@ -58,7 +62,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
 
-  // دالة إظهار نافذة طلب الإذن الأنيقة
   Future<bool> _showPermissionDialog() async {
     return await showDialog<bool>(
       context: context,
@@ -100,35 +103,37 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Future<void> _toggleSos() async {
-    // 1. الاهتزاز القوي (يعمل فوراً)
     HapticFeedback.heavyImpact();
 
     if (!_isSosActive) {
-      // 2. التحقق من إذن الكاميرا
       var status = await Permission.camera.status;
       
       if (!status.isGranted) {
-        // إظهار النافذة الأنيقة أولاً
         bool? userWantsPermission = await _showPermissionDialog();
         
         if (userWantsPermission == true) {
           status = await Permission.camera.request();
         } else {
-          // إذا رفض المستخدم النافذة، نوقف العملية
           return;
         }
       }
 
       if (status.isGranted) {
-        // 3. تشغيل الفلاش
         try {
           await TorchLight.enableTorch();
         } catch (e) {
           debugPrint("الفلاش غير مدعوم: $e");
         }
+
+        try {
+          // تم تعديل اسم الملف هنا ليتطابق مع الملف الذي رفعته
+          await _audioPlayer.play(AssetSource('military-siren.mp3'));
+        } catch (e) {
+          debugPrint("خطأ في تشغيل الصوت: $e");
+        }
+
         setState(() => _isSosActive = true);
       } else {
-        // إذا رفض الإذن من النظام
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('تم رفض إذن الكاميرا. لا يمكن تشغيل الفلاش.'),
@@ -137,11 +142,16 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         );
       }
     } else {
-      // إيقاف الفلاش
       try {
         await TorchLight.disableTorch();
       } catch (e) {
         debugPrint("خطأ في إيقاف الفلاش: $e");
+      }
+
+      try {
+        await _audioPlayer.stop();
+      } catch (e) {
+        debugPrint("خطأ في إيقاف الصوت: $e");
       }
       
       HapticFeedback.lightImpact();
