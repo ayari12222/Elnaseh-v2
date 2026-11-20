@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:share_plus/share_plus.dart';
@@ -18,11 +19,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   String _selectedCategory = 'الكل';
   final List<String> _categories = ['الكل', 'عاجل', 'معلومات', 'تحذير'];
   final PageController _pageController = PageController();
-  
+
   bool _isSosActive = false;
+  Timer? _vibrationTimer;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  final List<Map<String, dynamic>> _allPosts = [
+  final List> _allPosts = [
     {
       'image': 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
       'text': 'تحذير: زلزال بقوة 6.5 درجة يضرب المنطقة. يرجى التوجه إلى المناطق المفتوحة.',
@@ -55,65 +57,77 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     },
   ];
 
-  List<Map<String, dynamic>> get _filteredPosts {
+  List> get _filteredPosts {
     if (_selectedCategory == 'الكل') return _allPosts;
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
 
   Future<bool> _showPermissionDialog() async {
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Row(
-          children: [
-            Icon(Icons.flash_on, color: Colors.amber, size: 30),
-            SizedBox(width: 10),
-            Text(
-              'تفعيل الفلاش للطوارئ',
-              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Row(
+              children: [
+                Icon(Icons.flash_on, color: Colors.amber, size: 30),
+                SizedBox(width: 10),
+                Text(
+                  'تفعيل الفلاش للطوارئ',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ],
             ),
-          ],
-        ),
-        content: const Text(
-          'لتشغيل الفلاش تلقائياً في حالات الطوارئ، يرجى السماح للتطبيق بالوصول إلى الكاميرا.\n\n'
-          'هذا الإذن يُطلب مرة واحدة فقط ولن يتم استخدامه إلا لتشغيل الفلاش.',
-          style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('لاحقاً', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            content: const Text(
+              'لتشغيل الفلاش تلقائياً في حالات الطوارئ، يرجى السماح للتطبيق بالوصول إلى الكاميرا.\n\n'
+              'هذا الإذن يُطلب مرة واحدة فقط ولن يتم استخدامه إلا لتشغيل الفلاش.',
+              style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
             ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('السماح', style: TextStyle(color: Colors.white)),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('لاحقاً', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('السماح', style: TextStyle(color: Colors.white)),
+              ),
+            ],
           ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
+  }
+
+  void _startVibrationLoop() {
+    _vibrationTimer?.cancel();
+    HapticFeedback.heavyImpact();
+    _vibrationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_isSosActive) {
+        HapticFeedback.heavyImpact();
+      }
+    });
+  }
+
+  void _stopVibrationLoop() {
+    _vibrationTimer?.cancel();
+    _vibrationTimer = null;
   }
 
   Future<void> _toggleSos() async {
-    HapticFeedback.heavyImpact();
-
     if (!_isSosActive) {
       var status = await Permission.camera.status;
-      
+
       if (!status.isGranted) {
-        bool? userWantsPermission = await _showPermissionDialog();
-        
-        if (userWantsPermission == true) {
-          status = await Permission.camera.request();
-        } else {
+        final bool userWantsPermission = await _showPermissionDialog();
+        if (!userWantsPermission) {
           return;
         }
+        status = await Permission.camera.request();
       }
 
       if (status.isGranted) {
@@ -122,8 +136,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         } catch (e) {
           debugPrint("الفلاش غير مدعوم: $e");
         }
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('لم يتم منح إذن الكاميرا، سيتم تشغيل الصوت والاهتزاز فقط.')),
+        );
       }
-      
+
       try {
         await _audioPlayer.setReleaseMode(ReleaseMode.loop);
         await _audioPlayer.play(AssetSource('military-siren.mp3'));
@@ -131,23 +149,33 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         debugPrint("خطأ في تشغيل الصوت: $e");
       }
 
+      if (!mounted) return;
       setState(() => _isSosActive = true);
-
+      _startVibrationLoop();
     } else {
+      _stopVibrationLoop();
+
       try {
         await TorchLight.disableTorch();
       } catch (e) {
         debugPrint("خطأ في إيقاف الفلاش: $e");
       }
-      
-      await _audioPlayer.stop();
+
+      try {
+        await _audioPlayer.stop();
+      } catch (e) {
+        debugPrint("خطأ في إيقاف الصوت: $e");
+      }
+
       HapticFeedback.lightImpact();
+      if (!mounted) return;
       setState(() => _isSosActive = false);
     }
   }
 
   @override
   void dispose() {
+    _stopVibrationLoop();
     _audioPlayer.dispose();
     TorchLight.disableTorch();
     _pageController.dispose();
@@ -165,6 +193,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           icon: const Icon(Icons.menu, color: Colors.white),
           onSelected: (String value) {
             setState(() => _selectedCategory = value);
+            if (_pageController.hasClients) {
+              _pageController.jumpToPage(0);
+            }
           },
           itemBuilder: (context) => _categories.map((String category) {
             return PopupMenuItem<String>(
@@ -178,9 +209,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           children: [
             _buildCircleIcon(Icons.shield, Colors.blueAccent, () {}),
             const SizedBox(width: 8),
-            _buildCircleIcon(Icons.warning, Colors.redAccent, () {
-              _toggleSos();
-            }),
+            _buildCircleIcon(Icons.warning, Colors.redAccent, _toggleSos),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -321,7 +350,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: post['tagColor'] == 'red' ? Colors.red : (post['tagColor'] == 'blue' ? Colors.blue : Colors.orange),
+                  color: post['tagColor'] == 'red'
+                      ? Colors.red
+                      : (post['tagColor'] == 'blue' ? Colors.blue : Colors.orange),
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
@@ -358,7 +389,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               const SizedBox(height: 16),
               _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
               const SizedBox(height: 16),
-              
               GestureDetector(
                 onTap: () {
                   Share.share(post['text']);
