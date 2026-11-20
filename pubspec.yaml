@@ -25,6 +25,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   
-  # هذا هو القسم الجديد الذي يخبر التطبيق بمكان ملف الصوت
+  # هنا نضيف الملف الذي رفعته في المجلد الرئيسي
   assets:
-    - assets/siren.mp3
+    - military-siren.mp3
