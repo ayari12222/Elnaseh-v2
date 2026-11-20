@@ -125,7 +125,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         }
 
         try {
-          await _audioPlayer.play(AssetSource('military-siren.mp3'));
+          // ضبط مستوى الصوت إلى أقصى حد
+          await _audioPlayer.setVolume(1.0);
+          // تشغيل الملف الصوتي الجديد
+          await _audioPlayer.play(AssetSource('war-alarm-sound-long.mp3'));
         } catch (e) {
           debugPrint("خطأ في تشغيل الصوت: $e");
         }
