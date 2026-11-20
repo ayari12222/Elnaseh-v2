@@ -25,6 +25,6 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   
-  # البحث في المجلد الرئيسي (بدون assets/)
+  # اسم الملف الجديد الذي رفعته في المجلد الرئيسي
   assets:
-    - military-siren.mp3
+    - war-alarm-sound-long.mp3
