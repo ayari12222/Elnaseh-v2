@@ -24,6 +24,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   Timer? _vibrationTimer;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  // تتبع المنشورات التي تم الإعجاب بها
+  final Set<int> _likedPostIndices = {};
+
   final List> _allPosts = [
     {
       'image': 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
@@ -138,7 +141,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('لم يتم منح إذن الكاميرا، سيتم تشغيل الصوت والاهتزاز فقط.')),
+          const SnackBar(
+            content: Text('لم يتم منح إذن الكاميرا، سيتم تشغيل الصوت والاهتزاز فقط.'),
+          ),
         );
       }
 
@@ -173,11 +178,19 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     }
   }
 
+  Future<void> _disableTorchSafely() async {
+    try {
+      await TorchLight.disableTorch();
+    } catch (e) {
+      debugPrint("خطأ أثناء إيقاف الفلاش عند التخلص من الشاشة: $e");
+    }
+  }
+
   @override
   void dispose() {
     _stopVibrationLoop();
+    _disableTorchSafely();
     _audioPlayer.dispose();
-    TorchLight.disableTorch();
     _pageController.dispose();
     super.dispose();
   }
@@ -246,14 +259,38 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
         ],
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical,
-        itemCount: _filteredPosts.length,
-        itemBuilder: (context, index) {
-          final post = _filteredPosts[index];
-          return _buildPost(post);
-        },
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          _filteredPosts.isEmpty
+              ? const Center(
+                  child: Text(
+                    'لا توجد منشورات في هذا التصنيف حالياً',
+                    style: TextStyle(color: Colors.white70, fontSize: 16),
+                  ),
+                )
+              : PageView.builder(
+                  controller: _pageController,
+                  scrollDirection: Axis.vertical,
+                  itemCount: _filteredPosts.length,
+                  itemBuilder: (context, index) {
+                    final post = _filteredPosts[index];
+                    return _buildPost(post, index);
+                  },
+                ),
+          const Center(
+            child: Text(
+              'قسم الدردشة قيد التطوير...',
+              style: TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+          ),
+          const Center(
+            child: Text(
+              'قسم الأجهزة المتصلة قيد التطوير...',
+              style: TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
@@ -312,7 +349,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
-  Widget _buildPost(Map<String, dynamic> post) {
+  Widget _buildPost(Map<String, dynamic> post, int index) {
+    final bool isLiked = _likedPostIndices.contains(index);
+    final int displayedLikes = (post['likes'] as int) + (isLiked ? 1 : 0);
+
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -341,7 +381,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         ),
 
         Positioned(
-          bottom: 20,
+          bottom: 36,
           left: 16,
           right: 80,
           child: Column(
@@ -365,7 +405,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                 children: [
                   Text(
                     post['sender'],
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
                   ),
                   const SizedBox(width: 4),
                   const Icon(Icons.verified, color: Colors.blue, size: 20),
@@ -381,13 +425,39 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         ),
 
         Positioned(
-          bottom: 20,
+          bottom: 36,
           right: 16,
           child: Column(
             children: [
-              _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.red),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isLiked) {
+                      _likedPostIndices.remove(index);
+                    } else {
+                      _likedPostIndices.add(index);
+                    }
+                  });
+                },
+                child: _buildActionButton(
+                  isLiked ? Icons.favorite : Icons.favorite_border,
+                  displayedLikes.toString(),
+                  Colors.red,
+                ),
+              ),
               const SizedBox(height: 16),
-              _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
+              GestureDetector(
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('التعليقات قيد التطوير...')),
+                  );
+                },
+                child: _buildActionButton(
+                  Icons.comment,
+                  post['comments'].toString(),
+                  Colors.white,
+                ),
+              ),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: () {
