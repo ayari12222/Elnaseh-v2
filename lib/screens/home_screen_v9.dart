@@ -125,8 +125,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         }
 
         try {
-          // رابط صوت إنذار حرب (مضمون وسريع)
-          await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'));
+          // الرابط الذي يعمل
+          await _audioPlayer.play(UrlSource('https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3'));
         } catch (e) {
           debugPrint("خطأ في تشغيل الصوت: $e");
         }
