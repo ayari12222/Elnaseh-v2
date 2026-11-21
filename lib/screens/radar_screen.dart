@@ -1,5 +1,9 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
@@ -12,12 +16,12 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   late AnimationController _sweepController;
   late AnimationController _pulseController;
 
-  final List<Map<String, dynamic>> _targets = [
-    {'name': 'أحمد', 'distance': 0.25, 'color': Colors.cyanAccent},
-    {'name': 'سارة', 'distance': 0.55, 'color': Colors.redAccent},
-    {'name': 'محمد', 'distance': 0.80, 'color': Colors.cyanAccent},
-    {'name': 'نور', 'distance': 0.40, 'color': Colors.redAccent},
-  ];
+  final List<Map<String, dynamic>> _targets = [];
+  StreamSubscription<List<ScanResult>>? _scanSubscription;
+  bool _isScanning = false;
+  
+  String _userName = "مستخدم";
+  String get _advertiseName => "Elnaseh_$_userName";
 
   @override
   void initState() {
@@ -31,10 +35,81 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
+
+    _loadUserName().then((_) => _initBluetooth());
+  }
+
+  Future<void> _loadUserName() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _userName = prefs.getString('userName') ?? "مستخدم";
+    });
+  }
+
+  Future<void> _initBluetooth() async {
+    Map<Permission, PermissionStatus> statuses = await [
+      Permission.bluetooth,
+      Permission.bluetoothScan,
+      Permission.bluetoothAdvertise,
+      Permission.bluetoothConnect,
+      Permission.location,
+    ].request();
+
+    if (statuses[Permission.bluetoothScan]!.isGranted &&
+        statuses[Permission.bluetoothAdvertise]!.isGranted) {
+      _startAdvertising();
+      _startScanning();
+    } else {
+      debugPrint("أذونات البلوتوث غير ممنوحة");
+    }
+  }
+
+  Future<void> _startAdvertising() async {
+    try {
+      await FlutterBluePlus.startAdvertising(
+        _advertiseName,
+        androidAdvertiseSettings: AndroidAdvertiseSettings(
+          connectable: true,
+        ),
+      );
+      debugPrint("بدأ الإعلان باسم: $_advertiseName");
+    } catch (e) {
+      debugPrint("فشل الإعلان: $e");
+    }
+  }
+
+  void _startScanning() {
+    setState(() => _isScanning = true);
+    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
+      for (ScanResult r in results) {
+        if (r.device.platformName.startsWith("Elnaseh_") && 
+            !_targets.any((t) => t['id'] == r.device.remoteId.toString())) {
+          
+          String discoveredName = r.device.platformName.replaceFirst("Elnaseh_", "");
+          
+          setState(() {
+            _targets.add({
+              'id': r.device.remoteId.toString(),
+              'name': discoveredName,
+              'distance': 0.3 + (Random().nextDouble() * 0.5),
+              'color': Colors.cyanAccent,
+            });
+          });
+        }
+      }
+    });
+
+    FlutterBluePlus.startScan(
+      timeout: const Duration(seconds: 10),
+      androidUsesFineLocation: true,
+    );
   }
 
   @override
   void dispose() {
+    _scanSubscription?.cancel();
+    FlutterBluePlus.stopScan();
+    FlutterBluePlus.stopAdvertising();
     _sweepController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -57,6 +132,19 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
+        actions: [
+          IconButton(
+            icon: Icon(_isScanning ? Icons.stop : Icons.search, color: Colors.cyanAccent),
+            onPressed: () {
+              if (_isScanning) {
+                FlutterBluePlus.stopScan();
+                setState(() => _isScanning = false);
+              } else {
+                _startScanning();
+              }
+            },
+          ),
+        ],
       ),
       body: Center(
         child: AspectRatio(
