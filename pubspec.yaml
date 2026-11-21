@@ -10,7 +10,6 @@ dependencies:
   flutter:
     sdk: flutter
   audioplayers: ^6.0.0
-  just_audio: ^0.9.36
   torch_light: ^1.1.0
   share_plus: ^7.2.0
   image_gallery_saver_plus: ^4.0.1
