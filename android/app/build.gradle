@@ -5,8 +5,8 @@ plugins {
 }
 
 android {
-    namespace = "com.example.elnaseh_app"
-    compileSdk = 34
+    namespace = "com.example.elhnaseh_app"
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -19,9 +19,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.elnaseh_app"
+        applicationId = "com.example.elhnaseh_app"
         minSdk = 23
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }
