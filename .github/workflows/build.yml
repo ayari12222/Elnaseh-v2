@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main", "stable", "v2-clean" ]
+    branches: [ "main", "stable", "v2-clean", "v-2-stable-fix" ]
   workflow_dispatch:
 
 jobs:
