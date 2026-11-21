@@ -1,0 +1,64 @@
+# 📱 مشروع Elnaseh (رادار الأصدقاء + الدردشة + شبكة Mesh)
+
+## 🎯 الهدف العام (Project Goal)
+بناء تطبيق تواصل متقدم (Android أولاً، ثم iOS) يسمح لمجموعة من المستخدمين (أصدقاء/عائلة) بـ:
+1. **اكتشاف بعضهم البعض** عبر واجهة رادار تفاعلية (Radar UI).
+2. **الاكتشاف الهجين**: يظهر الأصدقاء القريبون جداً عبر البلوتوث (BLE)، والأصدقاء البعيدون عبر الإنترنت (GPS + Supabase).
+3. **الدردشة الفورية**: تبادل الرسائل النصية عبر الإنترنت (Supabase Realtime).
+4. **شبكة Mesh (لاحقاً)**: تمرير الرسائل بين الهواتف مباشرة (هاتف إلى هاتف) عند انقطاع الإنترنت تماماً.
+5. **الخصوصية المطلقة**: لا يرى المستخدم إلا الأصدقاء الذين تمت الموافقة المتبادلة بينهم. المستخدم يتحكم بمن يرى موقعه ومع من يتحدث.
+
+---
+
+## 🛠️ التقنيات المستخدمة (Tech Stack)
+- **Framework**: Flutter (Dart)
+- **Backend**: Supabase (PostgreSQL + Auth + Realtime + Storage)
+- **State Management**: Provider أو Riverpod (يُحدد لاحقاً)
+- **البلوتوث**: `flutter_blue_plus` (للمسح) + `beacon_broadcast` (للبث)
+- **الموقع**: `geolocator`
+- **التخزين المحلي**: `sqflite` (لحفظ قائمة الأصدقاء للعمل بدون إنترنت)
+- **الأذونات**: `permission_handler`
+- **شبكة Mesh**: `nearby_connections` (من جوجل - للمرحلة المتقدمة)
+
+---
+
+## 🗄️ هيكل قاعدة البيانات (Supabase Schema)
+يجب إنشاء هذه الجداول في Supabase (SQL Editor):
+
+### 1. جدول `profiles` (بيانات المستخدمين)
+- `id` (uuid, primary key, مرتبط بـ auth.users)
+- `username` (text, unique, not null) - اسم المستخدم الفريد
+- `display_name` (text) - الاسم الظاهر
+- `avatar_url` (text) - رابط الصورة الشخصية
+- `created_at` (timestamp)
+
+### 2. جدول `friendships` (علاقات الصداقة)
+- `id` (uuid, primary key)
+- `user_id` (uuid, FK -> auth.users) - المرسل
+- `friend_id` (uuid, FK -> auth.users) - المستقبل
+- `status` (text: 'pending', 'accepted', 'blocked')
+- `created_at` (timestamp)
+- **القيد**: unique(user_id, friend_id)
+
+### 3. جدول `locations` (المواقع)
+- `user_id` (uuid, primary key, FK -> auth.users)
+- `latitude` (double precision)
+- `longitude` (double precision)
+- `last_seen` (timestamp)
+
+### 4. جدول `messages` (الرسائل)
+- `id` (uuid, primary key)
+- `sender_id` (uuid, FK -> auth.users)
+- `receiver_id` (uuid, FK -> auth.users)
+- `message` (text)
+- `created_at` (timestamp)
+
+### 🔒 سياسات الأمان (RLS Policies)
+- `profiles`: القراءة للجميع، التحديث للمالك فقط.
+- `locations`: الإدخال/التحديث للمالك، القراءة للأصدقاء المقبولين فقط.
+- `messages`: الإدخال للمرسل، القراءة للمرسل والمستقبل فقط.
+- `friendships`: الإدارة للمستخدمين المعنيين فقط.
+
+---
+
+## 📂 هيكل ملفات المشروع (Project Structure)
