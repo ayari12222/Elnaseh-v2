@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,6 +23,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
+
+  final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
 
   @override
   void initState() {
@@ -56,9 +59,24 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     ].request();
 
     if (statuses[Permission.bluetoothScan]!.isGranted) {
+      _startAdvertising();
       _startScanning();
     } else {
       debugPrint("أذونات البلوتوث غير ممنوحة");
+    }
+  }
+
+  Future<void> _startAdvertising() async {
+    try {
+      await _blePeripheral.start(
+        advertiseData: AdvertiseData(
+          serviceUuid: "0000180D-0000-1000-8000-00805F9B34FB",
+          localName: _advertiseName,
+        ),
+      );
+      debugPrint("بدأ الإعلان باسم: $_advertiseName");
+    } catch (e) {
+      debugPrint("فشل الإعلان: $e");
     }
   }
 
@@ -93,6 +111,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   void dispose() {
     _scanSubscription?.cancel();
     FlutterBluePlus.stopScan();
+    _blePeripheral.stop();
     _sweepController.dispose();
     _pulseController.dispose();
     super.dispose();
