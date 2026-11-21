@@ -5,7 +5,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../../screens/radar_screen.dart'; // <-- المسار الصحيح
+import 'package:elhnaseh_app/screens/radar_screen.dart'; // <-- اسم الحزمة الكامل
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
