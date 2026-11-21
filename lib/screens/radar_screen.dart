@@ -55,26 +55,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       Permission.location,
     ].request();
 
-    if (statuses[Permission.bluetoothScan]!.isGranted &&
-        statuses[Permission.bluetoothAdvertise]!.isGranted) {
-      _startAdvertising();
+    if (statuses[Permission.bluetoothScan]!.isGranted) {
       _startScanning();
     } else {
       debugPrint("أذونات البلوتوث غير ممنوحة");
-    }
-  }
-
-  Future<void> _startAdvertising() async {
-    try {
-      await FlutterBluePlus.startAdvertising(
-        _advertiseName,
-        androidAdvertiseSettings: AndroidAdvertiseSettings(
-          connectable: true,
-        ),
-      );
-      debugPrint("بدأ الإعلان باسم: $_advertiseName");
-    } catch (e) {
-      debugPrint("فشل الإعلان: $e");
     }
   }
 
@@ -109,7 +93,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   void dispose() {
     _scanSubscription?.cancel();
     FlutterBluePlus.stopScan();
-    FlutterBluePlus.stopAdvertising();
     _sweepController.dispose();
     _pulseController.dispose();
     super.dispose();
