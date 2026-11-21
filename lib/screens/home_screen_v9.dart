@@ -5,7 +5,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'radar_screen.dart'; // <-- تمت إضافة هذا السطر
+import '../../screens/radar_screen.dart'; // <-- المسار الصحيح
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -204,7 +204,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
-              // <-- تعديل زر الرادار لفتح الشاشة
+              // <-- زر الرادار
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const RadarScreen()),
