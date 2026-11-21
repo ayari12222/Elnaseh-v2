@@ -21,6 +21,9 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   StreamSubscription<List<ScanResult>>? _scanSubscription;
   bool _isScanning = false;
   
+  bool _isAdvertising = false;
+  bool _isAdvertisingSupported = true;
+
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
 
@@ -67,16 +70,29 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   }
 
   Future<void> _startAdvertising() async {
+    if (_isAdvertising || !_isAdvertisingSupported) return;
+    
     try {
       await _blePeripheral.start(
-        advertiseData: AdvertiseData(
-          serviceUuid: "0000180D-0000-1000-8000-00805F9B34FB",
+        advertiseData: AdvertiseDataCore(
           localName: _advertiseName,
         ),
+        androidSettings: const AndroidAdvertiseSettings(
+          advertiseSettings: AdvertiseSettings(
+            connectable: true,
+            timeout: 0,
+          ),
+        ),
       );
+      if (mounted) {
+        setState(() => _isAdvertising = true);
+      }
       debugPrint("بدأ الإعلان باسم: $_advertiseName");
     } catch (e) {
       debugPrint("فشل الإعلان: $e");
+      if (mounted) {
+        setState(() => _isAdvertisingSupported = false);
+      }
     }
   }
 
@@ -89,7 +105,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
           
           String discoveredName = r.device.platformName.replaceFirst("Elnaseh_", "");
           
-          // تحويل قوة الإشارة (RSSI) إلى مسافة تقريبية
           double rssiValue = r.rssi.toDouble();
           double distanceRatio = (rssiValue + 100) / 70;
           if (distanceRatio < 0.1) distanceRatio = 0.1;
@@ -110,14 +125,19 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     FlutterBluePlus.startScan(
       timeout: const Duration(seconds: 10),
       androidUsesFineLocation: true,
-    );
+    ).then((_) {
+      setState(() => _isScanning = false);
+    });
   }
 
   @override
   void dispose() {
     _scanSubscription?.cancel();
     FlutterBluePlus.stopScan();
-    _blePeripheral.stop();
+    if (_isAdvertising) {
+      _blePeripheral.stop();
+      _isAdvertising = false;
+    }
     _sweepController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -149,6 +169,17 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                 setState(() => _isScanning = false);
               } else {
                 _startScanning();
+              }
+            },
+          ),
+          IconButton(
+            icon: Icon(_isAdvertising ? Icons.wifi_tethering : Icons.wifi_tethering_off, color: Colors.cyanAccent),
+            onPressed: () {
+              if (_isAdvertising) {
+                _blePeripheral.stop();
+                setState(() => _isAdvertising = false);
+              } else {
+                _startAdvertising();
               }
             },
           ),
