@@ -89,11 +89,17 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
           
           String discoveredName = r.device.platformName.replaceFirst("Elnaseh_", "");
           
+          // تحويل قوة الإشارة (RSSI) إلى مسافة تقريبية
+          double rssiValue = r.rssi.toDouble();
+          double distanceRatio = (rssiValue + 100) / 70;
+          if (distanceRatio < 0.1) distanceRatio = 0.1;
+          if (distanceRatio > 1.0) distanceRatio = 1.0;
+
           setState(() {
             _targets.add({
               'id': r.device.remoteId.toString(),
               'name': discoveredName,
-              'distance': 0.3 + (Random().nextDouble() * 0.5),
+              'distance': distanceRatio,
               'color': Colors.cyanAccent,
             });
           });
