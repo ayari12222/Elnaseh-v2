@@ -125,10 +125,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         }
 
         try {
-          // ضبط مستوى الصوت إلى أقصى حد
-          await _audioPlayer.setVolume(1.0);
-          // تشغيل الملف الصوتي الجديد
-          await _audioPlayer.play(AssetSource('war-alarm-sound-long.mp3'));
+          // رابط صوت إنذار حرب (مضمون وسريع)
+          await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'));
         } catch (e) {
           debugPrint("خطأ في تشغيل الصوت: $e");
         }
