@@ -50,7 +50,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   }
 
   Future<void> _initNearby() async {
-    // طلب الأذونات
     Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
       Permission.bluetooth,
@@ -103,7 +102,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         _userName,
         strategy,
         onEndpointFound: (id, name, serviceId) {
-          // تجاهل الأجهزة التي لا تحمل نفس التطبيق
           if (serviceId != this.serviceId) return;
           
           if (!_targets.any((t) => t['id'] == id)) {
