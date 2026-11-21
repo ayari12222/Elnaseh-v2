@@ -121,7 +121,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                 },
               ),
               ..._targets.map((t) {
-                double radius = 220 * t['distance'];
+                double radius = 220 * (t['distance'] as num).toDouble();
                 double angle = (t['name'].hashCode % 360) * (pi / 180);
 
                 return Positioned(
