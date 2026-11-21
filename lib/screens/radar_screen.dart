@@ -1,8 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
-import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:flutter_ble_peripheral/flutter_ble_peripheral.dart';
+import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,16 +17,14 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   late AnimationController _pulseController;
 
   final List<Map<String, dynamic>> _targets = [];
-  StreamSubscription<List<ScanResult>>? _scanSubscription;
   bool _isScanning = false;
-  
   bool _isAdvertising = false;
-  bool _isAdvertisingSupported = true;
 
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
 
-  final FlutterBlePeripheral _blePeripheral = FlutterBlePeripheral();
+  final Strategy strategy = Strategy.P2P_CLUSTER;
+  final String serviceId = "com.elnaseh.app";
 
   @override
   void initState() {
@@ -42,7 +39,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _loadUserName().then((_) => _initBluetooth());
+    _loadUserName().then((_) => _initNearby());
   }
 
   Future<void> _loadUserName() async {
@@ -52,92 +49,95 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     });
   }
 
-  Future<void> _initBluetooth() async {
+  Future<void> _initNearby() async {
+    // طلب الأذونات
     Map<Permission, PermissionStatus> statuses = await [
+      Permission.location,
       Permission.bluetooth,
       Permission.bluetoothScan,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
-      Permission.location,
+      Permission.nearbyWifiDevices,
     ].request();
 
-    if (statuses[Permission.bluetoothScan]!.isGranted) {
+    if (statuses[Permission.location]!.isGranted &&
+        statuses[Permission.bluetoothScan]!.isGranted) {
       _startAdvertising();
-      _startScanning();
+      _startDiscovery();
     } else {
-      debugPrint("أذونات البلوتوث غير ممنوحة");
+      debugPrint("الأذونات غير ممنوحة");
     }
   }
 
   Future<void> _startAdvertising() async {
-    if (_isAdvertising || !_isAdvertisingSupported) return;
-    
+    if (_isAdvertising) return;
     try {
-      await _blePeripheral.start(
-        advertiseData: AdvertiseDataCore(
-          localName: _advertiseName,
-        ),
-        androidSettings: const AndroidAdvertiseSettings(
-          advertiseSettings: AdvertiseSettings(
-            connectable: true,
-            timeout: 0,
-          ),
-        ),
+      bool isSuccess = await Nearby().startAdvertising(
+        _advertiseName,
+        strategy,
+        onConnectionInitiated: (id, info) {
+          Nearby().acceptConnection(
+            id,
+            onPayLoadRecieved: (endpointId, payload) {},
+            onPayloadTransferUpdate: (endpointId, update) {},
+          );
+        },
+        onConnectionResult: (id, status) {},
+        onDisconnected: (id) {},
+        serviceId: serviceId,
       );
-      if (mounted) {
+      if (isSuccess) {
         setState(() => _isAdvertising = true);
+        debugPrint("بدأ الإعلان بنجاح");
       }
-      debugPrint("بدأ الإعلان باسم: $_advertiseName");
     } catch (e) {
       debugPrint("فشل الإعلان: $e");
-      if (mounted) {
-        setState(() => _isAdvertisingSupported = false);
-      }
     }
   }
 
-  void _startScanning() {
+  Future<void> _startDiscovery() async {
+    if (_isScanning) return;
     setState(() => _isScanning = true);
-    _scanSubscription = FlutterBluePlus.scanResults.listen((results) {
-      for (ScanResult r in results) {
-        if (r.device.platformName.startsWith("Elnaseh_") && 
-            !_targets.any((t) => t['id'] == r.device.remoteId.toString())) {
+    try {
+      bool isSuccess = await Nearby().startDiscovery(
+        _userName,
+        strategy,
+        onEndpointFound: (id, name, serviceId) {
+          // تجاهل الأجهزة التي لا تحمل نفس التطبيق
+          if (serviceId != this.serviceId) return;
           
-          String discoveredName = r.device.platformName.replaceFirst("Elnaseh_", "");
-          
-          double rssiValue = r.rssi.toDouble();
-          double distanceRatio = (rssiValue + 100) / 70;
-          if (distanceRatio < 0.1) distanceRatio = 0.1;
-          if (distanceRatio > 1.0) distanceRatio = 1.0;
-
-          setState(() {
-            _targets.add({
-              'id': r.device.remoteId.toString(),
-              'name': discoveredName,
-              'distance': distanceRatio,
-              'color': Colors.cyanAccent,
+          if (!_targets.any((t) => t['id'] == id)) {
+            setState(() {
+              _targets.add({
+                'id': id,
+                'name': name.replaceFirst("Elnaseh_", ""),
+                'distance': 0.3 + (Random().nextDouble() * 0.5),
+                'color': Colors.cyanAccent,
+              });
             });
+          }
+        },
+        onEndpointLost: (id) {
+          setState(() {
+            _targets.removeWhere((t) => t['id'] == id);
           });
-        }
+        },
+        serviceId: serviceId,
+      );
+      if (!isSuccess) {
+        setState(() => _isScanning = false);
       }
-    });
-
-    FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 10),
-      androidUsesFineLocation: true,
-    ).then((_) {
+    } catch (e) {
+      debugPrint("فشل البحث: $e");
       setState(() => _isScanning = false);
-    });
+    }
   }
 
   @override
   void dispose() {
-    _scanSubscription?.cancel();
-    FlutterBluePlus.stopScan();
-    if (_isAdvertising) {
-      _blePeripheral.stop();
-      _isAdvertising = false;
-    }
+    Nearby().stopAdvertising();
+    Nearby().stopDiscovery();
+    Nearby().stopAllEndpoints();
     _sweepController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -165,21 +165,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             icon: Icon(_isScanning ? Icons.stop : Icons.search, color: Colors.cyanAccent),
             onPressed: () {
               if (_isScanning) {
-                FlutterBluePlus.stopScan();
+                Nearby().stopDiscovery();
                 setState(() => _isScanning = false);
               } else {
-                _startScanning();
-              }
-            },
-          ),
-          IconButton(
-            icon: Icon(_isAdvertising ? Icons.wifi_tethering : Icons.wifi_tethering_off, color: Colors.cyanAccent),
-            onPressed: () {
-              if (_isAdvertising) {
-                _blePeripheral.stop();
-                setState(() => _isAdvertising = false);
-              } else {
-                _startAdvertising();
+                _startDiscovery();
               }
             },
           ),
