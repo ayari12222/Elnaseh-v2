@@ -4,7 +4,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:just_audio/just_audio.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -21,7 +21,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   
   bool _isSosActive = false;
   
-  final AudioPlayer _justAudioPlayer = AudioPlayer();
+  // اللاعب معرف هنا مرة واحدة فقط (Global)
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<Map<String, dynamic>> _allPosts = [
     {
@@ -102,7 +103,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Future<void> _toggleSos() async {
-    // محاولة الاهتزاز بأمر بسيط
     try {
       HapticFeedback.vibrate();
     } catch (e) {
@@ -130,8 +130,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         }
 
         try {
-          await _justAudioPlayer.setUrl('https://www.learningcontainer.com/wp-content/uploads/2020/02/Kalimba.mp3');
-          _justAudioPlayer.play();
+          // استخدام audioplayers مع الرابط
+          await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'));
         } catch (e) {
           debugPrint("خطأ في تشغيل الصوت: $e");
         }
@@ -153,7 +153,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       }
 
       try {
-        await _justAudioPlayer.stop();
+        await _audioPlayer.stop();
       } catch (e) {
         debugPrint("خطأ في إيقاف الصوت: $e");
       }
