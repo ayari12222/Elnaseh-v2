@@ -4,7 +4,6 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:just_audio/just_audio.dart';
 
 class HomeScreenV9 extends StatefulWidget {
@@ -22,7 +21,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   
   bool _isSosActive = false;
   
-  final AudioPlayer _audioPlayer = AudioPlayer();
   final AudioPlayer _justAudioPlayer = AudioPlayer();
 
   final List<Map<String, dynamic>> _allPosts = [
@@ -104,7 +102,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Future<void> _toggleSos() async {
-    HapticFeedback.heavyImpact();
+    // محاولة الاهتزاز بأمر بسيط
+    try {
+      HapticFeedback.vibrate();
+    } catch (e) {
+      debugPrint("الاهتزاز غير مدعوم: $e");
+    }
 
     if (!_isSosActive) {
       var status = await Permission.camera.status;
@@ -151,12 +154,16 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
 
       try {
         await _justAudioPlayer.stop();
-        await _audioPlayer.stop();
       } catch (e) {
         debugPrint("خطأ في إيقاف الصوت: $e");
       }
       
-      HapticFeedback.lightImpact();
+      try {
+        HapticFeedback.vibrate();
+      } catch (e) {
+        debugPrint("الاهتزاز غير مدعوم: $e");
+      }
+      
       setState(() => _isSosActive = false);
     }
   }
