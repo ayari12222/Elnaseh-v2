@@ -5,6 +5,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'radar_screen.dart'; // <-- تمت إضافة هذا السطر
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -21,7 +22,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   
   bool _isSosActive = false;
   
-  // اللاعب معرف هنا مرة واحدة فقط (Global)
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<Map<String, dynamic>> _allPosts = [
@@ -130,7 +130,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         }
 
         try {
-          // استخدام audioplayers مع الرابط
           await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'));
         } catch (e) {
           debugPrint("خطأ في تشغيل الصوت: $e");
@@ -169,6 +168,14 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   @override
+  void dispose() {
+    _audioPlayer.dispose();
+    TorchLight.disableTorch();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
@@ -197,8 +204,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('الرادار (Wi-Fi Direct) قيد التطوير...')),
+              // <-- تعديل زر الرادار لفتح الشاشة
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const RadarScreen()),
               );
             }),
             const SizedBox(width: 8),
