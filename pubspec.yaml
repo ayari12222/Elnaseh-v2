@@ -19,8 +19,8 @@ dependencies:
   shared_preferences: ^2.2.0
   nearby_connections: ^4.3.0
   geolocator: ^12.0.0
-  flutter_blue_plus: ^1.35.0
-  # مكتبة شبكة Mesh لميزة SOS
+  # تم تحديث flutter_blue_plus ليتوافق مع flutter_mesh_network
+  flutter_blue_plus: ^2.2.1
   flutter_mesh_network: ^0.1.3
 
 dev_dependencies:
@@ -28,7 +28,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^3.0.0
 
-# هذا القسم الجديد هو الحل لتعارض إصدار path
+# هذا القسم يحل تعارض حزمة path
 dependency_overrides:
   path: ^1.9.1
 
