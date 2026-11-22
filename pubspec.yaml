@@ -20,6 +20,8 @@ dependencies:
   nearby_connections: ^4.3.0
   geolocator: ^12.0.0
   flutter_blue_plus: ^1.35.0
+  # مكتبة شبكة Mesh لميزة SOS
+  flutter_mesh_network: ^0.1.3
 
 dev_dependencies:
   flutter_test:
