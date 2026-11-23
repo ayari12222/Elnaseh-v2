@@ -1,9 +1,9 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:audioplayers/audioplayers.dart'; 
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,9 +13,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ============================================================
-// مساعد التشفير
-// ============================================================
+import 'database_helper.dart';
+
 class CryptoHelper {
   static enc.Key _keyFrom(String raw) {
     final bytes = utf8.encode(raw.padRight(32, '0').substring(0, 32));
@@ -43,9 +42,6 @@ class CryptoHelper {
   }
 }
 
-// ============================================================
-// نموذج الرسالة
-// ============================================================
 class SosMessage {
   final String id;
   final String sender;
@@ -58,15 +54,9 @@ class SosMessage {
   final double? lng;
 
   SosMessage({
-    required this.id,
-    required this.sender,
-    required this.ttl,
-    required this.content,
-    required this.timestampMs,
-    required this.type,
-    this.ackFor,
-    this.lat,
-    this.lng,
+    required this.id, required this.sender, required this.ttl,
+    required this.content, required this.timestampMs, required this.type,
+    this.ackFor, this.lat, this.lng,
   });
 
   Map<String, dynamic> toJson() => {
@@ -77,12 +67,8 @@ class SosMessage {
       };
 
   factory SosMessage.fromJson(Map<String, dynamic> j) => SosMessage(
-        id: j['id'] as String,
-        sender: j['s'] as String,
-        ttl: j['ttl'] as int,
-        content: j['c'] as String,
-        timestampMs: j['t'] as int,
-        type: j['ty'] as String,
+        id: j['id'] as String, sender: j['s'] as String, ttl: j['ttl'] as int,
+        content: j['c'] as String, timestampMs: j['t'] as int, type: j['ty'] as String,
         ackFor: j['af'] as String?,
         lat: j['lat'] != null ? (j['lat'] as num).toDouble() : null,
         lng: j['lng'] != null ? (j['lng'] as num).toDouble() : null,
@@ -105,9 +91,6 @@ class SosMessage {
   }
 }
 
-// ============================================================
-// شاشة الرادار
-// ============================================================
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
 
@@ -124,15 +107,15 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   bool _isAdvertising = false;
   bool _isSosSending = false;
 
-  final Set<String> _processedMessageIds = {};
+  final LinkedHashSet<String> _processedMessageIds = LinkedHashSet<String>();
   final List<SosMessage> _messageLog = [];
+  final Set<String> _linkedEndpoints = {};
 
   Timer? _discoveryTimer;
   Timer? _stopDiscoveryTimer;
 
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
-  
   String _sharedKey = "Elnaseh_Key_1"; 
 
   final Strategy strategy = Strategy.P2P_CLUSTER;
@@ -149,8 +132,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   static const Duration _ackTimeout = Duration(seconds: 5);
   String? _activeSosId;
   final Set<String> _ackedNames = {};
-
-  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -183,10 +164,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       if (!serviceEnabled) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('⚠️ يرجى تشغيل خدمة الموقع (GPS) من إعدادات الهاتف!'),
-              backgroundColor: Colors.red, duration: Duration(seconds: 10),
-            ),
+            const SnackBar(content: Text('⚠️ يرجى تشغيل خدمة الموقع (GPS)!'), backgroundColor: Colors.red, duration: Duration(seconds: 10)),
           );
         }
         return;
@@ -213,16 +191,23 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             id,
             onPayLoadRecieved: (endpointId, payload) {
               if (payload.type == PayloadType.BYTES && payload.bytes != null) {
-                final raw = utf8.decode(payload.bytes!, allowMalformed: true);
-                final msg = SosMessage.tryDecode(raw, _sharedKey);
-                if (msg != null) _handleIncomingMessage(msg, endpointId);
+                _onPayloadReceived(endpointId, payload.bytes!);
               }
             },
             onPayloadTransferUpdate: (endpointId, update) {},
           );
         },
-        onConnectionResult: (id, status) {},
-        onDisconnected: (id) {},
+        onConnectionResult: (id, status) {
+          if (status == Status.CONNECTED) {
+            _linkedEndpoints.add(id);
+            _refreshTargetColor(id, Colors.cyanAccent);
+            _syncMessagesWithPeer(id);
+          }
+        },
+        onDisconnected: (id) {
+          _linkedEndpoints.remove(id);
+          if (mounted) setState(() => _targets.removeWhere((t) => t['id'] == id));
+        },
         serviceId: serviceId,
       );
       setState(() => _isAdvertising = true);
@@ -241,22 +226,29 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     try {
       await Nearby().stopDiscovery().catchError((_) {});
       setState(() => _isScanning = true);
+      
       await Nearby().startDiscovery(
         _userName, strategy,
-        onEndpointFound: (id, name, svcId) {
+        onEndpointFound: (id, name, svcId) async {
           if (svcId != serviceId) return;
           if (_targets.any((t) => t['id'] == id)) return;
+          
           setState(() {
             if (_targets.length >= _maxTargets) _targets.removeAt(0);
             final angle = (_targets.length * (2 * pi / 8)) - (pi / 2);
             _targets.add({
               'id': id, 'name': name.replaceFirst("Elnaseh_", ""),
               'angle': angle + Random().nextDouble() * 0.15,
-              'radius': _targetRadius, 'color': Colors.cyanAccent,
+              'radius': _targetRadius, 'color': Colors.amberAccent,
             });
           });
+
+          await _ensureConnected(id);
         },
-        onEndpointLost: (id) => setState(() => _targets.removeWhere((t) => t['id'] == id)),
+        onEndpointLost: (id) {
+          _linkedEndpoints.remove(id);
+          if (mounted) setState(() => _targets.removeWhere((t) => t['id'] == id));
+        },
         serviceId: serviceId,
       );
       
@@ -270,17 +262,72 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
+  Future<void> _ensureConnected(String endpointId) async {
+    if (_linkedEndpoints.contains(endpointId)) return;
+    try {
+      await Nearby().connect(
+        endpointId,
+        onConnectionInitiated: (id, info) async {
+          await Nearby().acceptConnection(
+            id,
+            onPayLoadRecieved: (epid, payload) {
+              if (payload.type == PayloadType.BYTES && payload.bytes != null) {
+                _onPayloadReceived(epid, payload.bytes!);
+              }
+            },
+            onPayloadTransferUpdate: (endpointId, update) {},
+          );
+        },
+        onConnectionResult: (id, status) {
+          if (status == Status.CONNECTED) {
+            _linkedEndpoints.add(id);
+            _refreshTargetColor(id, Colors.cyanAccent);
+            _syncMessagesWithPeer(id);
+          }
+        },
+        onDisconnected: (id) {
+          _linkedEndpoints.remove(id);
+          if (mounted) setState(() => _targets.removeWhere((t) => t['id'] == id));
+        },
+      );
+    } catch (e) {
+      debugPrint("❌ الاتصال بـ $endpointId فشل: $e");
+    }
+  }
+
+  void _refreshTargetColor(String endpointId, Color color) {
+    if (!mounted) return;
+    setState(() {
+      for (final t in _targets) {
+        if (t['id'] == endpointId) t['color'] = color;
+      }
+    });
+  }
+
+  Future<void> _syncMessagesWithPeer(String endpointId) async {
+    try {
+      final unsent = await DatabaseHelper.instance.getUnsentMessages(endpointId);
+      for (var rawMsg in unsent) {
+        final msg = SosMessage(
+          id: rawMsg['id'], sender: rawMsg['sender'], ttl: rawMsg['ttl'],
+          content: rawMsg['content'], timestampMs: rawMsg['timestampMs'],
+          type: rawMsg['type'], lat: rawMsg['lat'], lng: rawMsg['lng'],
+        );
+        final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
+        final success = await _sendWithRetry(endpointId, data);
+        if (success) {
+          await DatabaseHelper.instance.markAsSent(msg.id, endpointId);
+        }
+      }
+    } catch (e) {
+      debugPrint("فشل المزامنة: $e");
+    }
+  }
+
   Future<void> _alertSosReceived() async {
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
-
-    try {
-      await _audioPlayer.play(AssetSource('war-alarm-sound-long.mp3'));
-    } catch (e) {
-      debugPrint("❌ خطأ في تشغيل الصوت: $e");
-      SystemSound.play(SystemSoundType.alert);
-    }
-
+    SystemSound.play(SystemSoundType.alert);
     Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
     Future.delayed(const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
   }
@@ -288,10 +335,14 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   Future<bool> _sendWithRetry(String endpointId, Uint8List data) async {
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
+        if (!_linkedEndpoints.contains(endpointId)) {
+          await _ensureConnected(endpointId);
+          await Future.delayed(const Duration(milliseconds: 400));
+        }
         await Nearby().sendBytesPayload(endpointId, data);
         return true;
       } catch (e) {
-        if (attempt < 3) await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(Duration(milliseconds: 300 * attempt));
       }
     }
     return false;
@@ -334,6 +385,11 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     _processedMessageIds.add(messageId);
     _activeSosId = messageId;
 
+    await DatabaseHelper.instance.saveMessage({
+      'id': sos.id, 'sender': sos.sender, 'content': sos.content, 'ttl': sos.ttl,
+      'lat': sos.lat, 'lng': sos.lng, 'timestampMs': sos.timestampMs, 'type': sos.type,
+    });
+
     final targetsCopy = List<Map<String, dynamic>>.from(_targets);
     final data = Uint8List.fromList(utf8.encode(sos.encode(_sharedKey)));
 
@@ -371,10 +427,23 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     );
   }
 
+  void _onPayloadReceived(String fromEndpointId, Uint8List bytes) {
+    final raw = utf8.decode(bytes, allowMalformed: true);
+    final msg = SosMessage.tryDecode(raw, _sharedKey);
+    if (msg == null || msg.isExpired) return;
+    if (_processedMessageIds.contains(msg.id)) return;
+    _handleIncomingMessage(msg, fromEndpointId);
+  }
+
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
-    if (msg.isExpired() || _processedMessageIds.contains(msg.id)) return;
     _processedMessageIds.add(msg.id);
     if (_processedMessageIds.length > 1000) _processedMessageIds.clear();
+
+    DatabaseHelper.instance.saveMessage({
+      'id': msg.id, 'sender': msg.sender, 'content': msg.content, 'ttl': msg.ttl,
+      'lat': msg.lat, 'lng': msg.lng, 'timestampMs': msg.timestampMs, 'type': msg.type,
+    });
+    DatabaseHelper.instance.markAsSent(msg.id, fromEndpointId);
 
     if (msg.type == 'ACK') {
       if (_activeSosId != null && msg.ackFor == _activeSosId) setState(() => _ackedNames.add(msg.sender));
@@ -391,7 +460,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
     if (msg.ttl > 1) {
       final relay = SosMessage(id: msg.id, sender: msg.sender, ttl: msg.ttl - 1, content: msg.content, timestampMs: msg.timestampMs, type: 'SOS', lat: msg.lat, lng: msg.lng);
-      _relayMessage(relay);
+      _relayMessage(relay, fromEndpointId);
     }
   }
 
@@ -400,9 +469,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     await _sendWithRetry(toEndpointId, Uint8List.fromList(utf8.encode(ack.encode(_sharedKey))));
   }
 
-  Future<void> _relayMessage(SosMessage msg) async {
+  Future<void> _relayMessage(SosMessage msg, String excludeEndpointId) async {
     final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
-    await Future.wait(List<Map<String, dynamic>>.from(_targets).map((t) => _sendWithRetry(t['id'], data)));
+    final otherTargets = List<Map<String, dynamic>>.from(_targets).where((t) => t['id'] != excludeEndpointId);
+    await Future.wait(otherTargets.map((t) => _sendWithRetry(t['id'], data)));
   }
 
   void _showSosReceived(SosMessage msg) {
@@ -429,9 +499,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                   await launchUrl(url, mode: LaunchMode.externalApplication);
                 } catch (e) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('فشل فتح الخريطة: $e'), backgroundColor: Colors.red),
-                    );
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل فتح الخريطة: $e'), backgroundColor: Colors.red));
                   }
                 }
               },
@@ -529,7 +597,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   @override
   void dispose() {
-    _audioPlayer.dispose();
     _discoveryTimer?.cancel(); _stopDiscoveryTimer?.cancel();
     Nearby().stopAdvertising(); Nearby().stopDiscovery(); Nearby().stopAllEndpoints();
     _sweepController.dispose(); _pulseController.dispose();
