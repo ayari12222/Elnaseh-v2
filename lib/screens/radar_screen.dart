@@ -13,7 +13,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'database_helper.dart';
+// ✅ تم تصحيح المسار للخروج من مجلد screens والبحث في lib
+import '../database_helper.dart';
 
 class CryptoHelper {
   static enc.Key _keyFrom(String raw) {
@@ -430,7 +431,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   void _onPayloadReceived(String fromEndpointId, Uint8List bytes) {
     final raw = utf8.decode(bytes, allowMalformed: true);
     final msg = SosMessage.tryDecode(raw, _sharedKey);
-    if (msg == null || msg.isExpired) return;
+    
+    // ✅ تم تصحيح استدعاء الدالة بإضافة الأقواس
+    if (msg == null || msg.isExpired()) return;
+    
     if (_processedMessageIds.contains(msg.id)) return;
     _handleIncomingMessage(msg, fromEndpointId);
   }
