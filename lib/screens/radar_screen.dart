@@ -15,9 +15,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ═══════════════════════════════════════════════════════════════
-// 🔐 CryptoHelper
-// ═══════════════════════════════════════════════════════════════
 class CryptoHelper {
   static enc.Key _keyFrom(String raw) {
     final bytes = utf8.encode(raw.padRight(32, '0').substring(0, 32));
@@ -52,9 +49,6 @@ class CryptoHelper {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 📨 SosMessage
-// ═══════════════════════════════════════════════════════════════
 class SosMessage {
   final String id;
   final String sender;
@@ -121,13 +115,9 @@ class SosMessage {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 💾 DatabaseHelper
-// ═══════════════════════════════════════════════════════════════
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._internal();
   static Database? _db;
-
   DatabaseHelper._internal();
 
   Future<Database> get database async {
@@ -192,9 +182,6 @@ class DatabaseHelper {
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// 🎯 RadarScreen
-// ═══════════════════════════════════════════════════════════════
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
 
@@ -719,7 +706,8 @@ class _RadarScreenState extends State<RadarScreen>
   ) async {
     if (toEndpointId == _dummyEndpoint) return;
     final ack = SosMessage(
-      id: 'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
+      id:
+          'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
       sender: _userName,
       ttl: 1,
       content: '',
@@ -904,13 +892,15 @@ class _RadarScreenState extends State<RadarScreen>
             final sel = entry.value == _maxTtl;
             return ListTile(
               leading: Icon(
-                sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                sel
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
                 color: sel ? Colors.cyanAccent : Colors.grey,
               ),
               title: Text(
                 entry.key,
-                style: TextStyle(
-                    color: sel ? Colors.cyanAccent : Colors.white),
+                style:
+                    TextStyle(color: sel ? Colors.cyanAccent : Colors.white),
               ),
               onTap: () => Navigator.pop(ctx, entry.value),
             );
@@ -1040,3 +1030,46 @@ class _RadarScreenState extends State<RadarScreen>
                       style: TextStyle(color: Colors.white)),
                 ),
               ),
+              PopupMenuItem(
+                value: 'log',
+                child: ListTile(
+                  leading: Icon(Icons.history, color: Colors.cyanAccent),
+                  title: Text('السجل', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'ttl',
+                child: ListTile(
+                  leading: Icon(Icons.tune, color: Colors.cyanAccent),
+                  title: Text('مدى الانتشار',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = max(
+            0.0,
+            min(constraints.maxWidth, constraints.maxHeight - 120),
+          );
+          final center = size / 2;
+          final radius = size * 0.36;
+
+          return Stack(
+            children: [
+              Center(
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      ...List.generate(
+                        4,
+                        (i) => AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) => Container(
+                            width
