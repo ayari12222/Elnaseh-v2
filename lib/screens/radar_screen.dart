@@ -9,14 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nearby_connections/nearby_connections.dart';
+import 'package:path/path.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../database_helper.dart';
-
 // ═══════════════════════════════════════════════════════════════
-// 🔐 CryptoHelper - مع تحسينات الأمان
+// 🔐 CryptoHelper
 // ═══════════════════════════════════════════════════════════════
 class CryptoHelper {
   static enc.Key _keyFrom(String raw) {
@@ -45,7 +45,6 @@ class CryptoHelper {
     }
   }
 
-  /// توليد مفتاح عشوائي آمن
   static String generateRandomKey() {
     final rnd = Random.secure();
     final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
@@ -54,7 +53,7 @@ class CryptoHelper {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// 📨 SosMessage - نموذج الرسالة
+// 📨 SosMessage
 // ═══════════════════════════════════════════════════════════════
 class SosMessage {
   final String id;
@@ -123,6 +122,77 @@ class SosMessage {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// 💾 DatabaseHelper
+// ═══════════════════════════════════════════════════════════════
+class DatabaseHelper {
+  static final DatabaseHelper instance = DatabaseHelper._internal();
+  static Database? _db;
+
+  DatabaseHelper._internal();
+
+  Future<Database> get database async {
+    _db ??= await _initDb();
+    return _db!;
+  }
+
+  Future<Database> _initDb() async {
+    final path = join(await getDatabasesPath(), 'elnaseh.db');
+    return openDatabase(
+      path,
+      version: 1,
+      onCreate: (db, version) async {
+        await db.execute('''
+          CREATE TABLE messages (
+            id TEXT PRIMARY KEY,
+            sender TEXT NOT NULL,
+            content TEXT NOT NULL,
+            ttl INTEGER NOT NULL,
+            lat REAL,
+            lng REAL,
+            timestampMs INTEGER NOT NULL,
+            type TEXT NOT NULL
+          )
+        ''');
+        await db.execute('''
+          CREATE TABLE delivery (
+            messageId TEXT NOT NULL,
+            endpointId TEXT NOT NULL,
+            PRIMARY KEY (messageId, endpointId)
+          )
+        ''');
+      },
+    );
+  }
+
+  Future<void> saveMessage(Map<String, dynamic> message) async {
+    final db = await database;
+    await db.insert('messages', message,
+        conflictAlgorithm: ConflictAlgorithm.ignore);
+  }
+
+  Future<void> markAsSent(String messageId, String endpointId) async {
+    final db = await database;
+    await db.insert(
+      'delivery',
+      {'messageId': messageId, 'endpointId': endpointId},
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getUnsentMessages(
+      String endpointId) async {
+    final db = await database;
+    return db.rawQuery('''
+      SELECT m.* FROM messages m
+      WHERE m.id NOT IN (
+        SELECT messageId FROM delivery WHERE endpointId = ?
+      )
+      ORDER BY m.timestampMs ASC
+    ''', [endpointId]);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // 🎯 RadarScreen
 // ═══════════════════════════════════════════════════════════════
 class RadarScreen extends StatefulWidget {
@@ -137,24 +207,20 @@ class _RadarScreenState extends State<RadarScreen>
   late AnimationController _sweepController;
   late AnimationController _pulseController;
 
-  // ─── الحالة العامة ───
   final List<Map<String, dynamic>> _targets = [];
   bool _isScanning = false;
   bool _isAdvertising = false;
   bool _isSosSending = false;
   bool _discoveryInProgress = false;
 
-  // ─── الرسائل ───
   final LinkedHashSet<String> _processedMessageIds = LinkedHashSet<String>();
   final List<SosMessage> _messageLog = [];
   final Set<String> _linkedEndpoints = {};
 
-  // ─── المؤقتات ───
   Timer? _discoveryTimer;
   Timer? _stopDiscoveryTimer;
   Timer? _activeSosIdResetTimer;
 
-  // ─── الإعدادات ───
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
   String _sharedKey = "Elnaseh_Key_1";
@@ -167,7 +233,6 @@ class _RadarScreenState extends State<RadarScreen>
     'طوارئ قصوى (15)': 15,
   };
 
-  // ─── الثوابت ───
   final Strategy strategy = Strategy.P2P_CLUSTER;
   final String serviceId = "com.elnaseh.app";
   static const double _targetRadius = 180.0;
@@ -176,7 +241,6 @@ class _RadarScreenState extends State<RadarScreen>
   static const Duration _ackTimeout = Duration(seconds: 5);
   static const String _dummyEndpoint = "dummy_endpoint";
 
-  // ─── SOS النشط ───
   String? _activeSosId;
   final Set<String> _ackedNames = {};
   int _activeSosTargetCount = 0;
@@ -195,17 +259,12 @@ class _RadarScreenState extends State<RadarScreen>
     _loadPrefs().then((_) => _initNearby());
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // ⚙️ الإعدادات الأولية
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
       _userName = prefs.getString('userName') ?? "مستخدم";
       _maxTtl = prefs.getInt('maxTtl') ?? 5;
-
-      // ✅ توليد مفتاح عشوائي آمن عند أول تشغيل
       final savedKey = prefs.getString('sharedKey');
       if (savedKey == null || savedKey.isEmpty) {
         _sharedKey = CryptoHelper.generateRandomKey();
@@ -259,9 +318,6 @@ class _RadarScreenState extends State<RadarScreen>
     _startDiscoveryWithTimer();
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 📡 الإعلان
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _startAdvertising() async {
     if (_isAdvertising) return;
     try {
@@ -300,9 +356,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🔍 الاكتشاف
-  // ═══════════════════════════════════════════════════════════════
   void _startDiscoveryWithTimer() {
     _startDiscovery();
     _discoveryTimer = Timer.periodic(
@@ -312,10 +365,8 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   Future<void> _startDiscovery() async {
-    // ✅ حماية من التراكب
     if (_discoveryInProgress || !mounted) return;
     _discoveryInProgress = true;
-
     try {
       await Nearby().stopDiscovery().catchError((_) {});
       if (mounted) setState(() => _isScanning = true);
@@ -339,7 +390,6 @@ class _RadarScreenState extends State<RadarScreen>
             });
           });
 
-          // ✅ جدولة الاتصال بعد تأخير بسيط
           Future.delayed(
             const Duration(milliseconds: 500),
             () => _ensureConnected(id),
@@ -367,9 +417,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🔗 الاتصال
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _ensureConnected(String endpointId) async {
     if (_linkedEndpoints.contains(endpointId)) return;
     try {
@@ -415,9 +462,6 @@ class _RadarScreenState extends State<RadarScreen>
     });
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🔄 المزامنة
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _syncMessagesWithPeer(String endpointId) async {
     try {
       final unsent = await DatabaseHelper.instance.getUnsentMessages(endpointId);
@@ -429,12 +473,8 @@ class _RadarScreenState extends State<RadarScreen>
           content: rawMsg['content'] as String,
           timestampMs: rawMsg['timestampMs'] as int,
           type: rawMsg['type'] as String,
-          lat: rawMsg['lat'] != null
-              ? (rawMsg['lat'] as num).toDouble()
-              : null,
-          lng: rawMsg['lng'] != null
-              ? (rawMsg['lng'] as num).toDouble()
-              : null,
+          lat: rawMsg['lat'] != null ? (rawMsg['lat'] as num).toDouble() : null,
+          lng: rawMsg['lng'] != null ? (rawMsg['lng'] as num).toDouble() : null,
         );
         final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
         final ok = await _sendWithRetry(endpointId, data);
@@ -447,9 +487,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 📤 إرسال مع إعادة المحاولة
-  // ═══════════════════════════════════════════════════════════════
   Future<bool> _sendWithRetry(String endpointId, Uint8List data) async {
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
@@ -467,9 +504,6 @@ class _RadarScreenState extends State<RadarScreen>
     return false;
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 📍 الموقع الجغرافي
-  // ═══════════════════════════════════════════════════════════════
   Future<Position?> _getCurrentLocation() async {
     if (!await Geolocator.isLocationServiceEnabled()) return null;
     var permission = await Geolocator.checkPermission();
@@ -480,8 +514,6 @@ class _RadarScreenState extends State<RadarScreen>
         permission == LocationPermission.deniedForever) {
       return null;
     }
-
-    // ✅ محاولات متعددة بدقة متناقصة
     try {
       return await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
@@ -499,9 +531,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🚨 إرسال SOS
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _sendSosBroadcast() async {
     if (_targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -540,8 +569,6 @@ class _RadarScreenState extends State<RadarScreen>
 
     _processedMessageIds.add(messageId);
     _activeSosId = messageId;
-
-    // ✅ إلغاء أي مؤقت قديم
     _activeSosIdResetTimer?.cancel();
 
     await DatabaseHelper.instance.saveMessage({
@@ -579,7 +606,6 @@ class _RadarScreenState extends State<RadarScreen>
       ),
     );
 
-    // ✅ نبقي _activeSosId صالحاً لمدة أطول لاستقبال ACKs المتأخرة
     _activeSosIdResetTimer = Timer(const Duration(seconds: 30), () {
       if (mounted) setState(() => _activeSosId = null);
     });
@@ -611,11 +637,9 @@ class _RadarScreenState extends State<RadarScreen>
             child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
             onPressed: () => Navigator.pop(context, controller.text),
-            child:
-                const Text('إرسال', style: TextStyle(color: Colors.white)),
+            child: const Text('إرسال', style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -624,36 +648,26 @@ class _RadarScreenState extends State<RadarScreen>
     return result;
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 📥 استقبال الرسائل
-  // ═══════════════════════════════════════════════════════════════
   void _onPayloadReceived(String fromEndpointId, Uint8List bytes) {
     final raw = utf8.decode(bytes, allowMalformed: true);
     final msg = SosMessage.tryDecode(raw, _sharedKey);
     if (msg == null) return;
-
-    // ✅ ACK لا ينتهي صلاحيته، وSOS ينتهي بعد 30 دقيقة
     if (msg.type != 'ACK' && msg.isExpired()) return;
-
     _handleIncomingMessage(msg, fromEndpointId);
   }
 
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
-    // ✅ إرسال ACK دائماً (حتى لو مكرر) — قبل فحص _processedMessageIds
     if (msg.type == 'SOS') {
       _sendAck(msg.id, msg.sender, fromEndpointId);
     }
 
-    // ✅ فحص التكرار
     if (_processedMessageIds.contains(msg.id)) return;
     _processedMessageIds.add(msg.id);
 
-    // ✅ إزالة الأقدم بدلاً من مسح الكل
     if (_processedMessageIds.length > _maxProcessedIds) {
       _processedMessageIds.remove(_processedMessageIds.first);
     }
 
-    // حفظ في قاعدة البيانات
     DatabaseHelper.instance.saveMessage({
       'id': msg.id,
       'sender': msg.sender,
@@ -669,7 +683,6 @@ class _RadarScreenState extends State<RadarScreen>
       DatabaseHelper.instance.markAsSent(msg.id, fromEndpointId);
     }
 
-    // ─── معالجة ACK ───
     if (msg.type == 'ACK') {
       if (_activeSosId != null && msg.ackFor == _activeSosId) {
         if (mounted) setState(() => _ackedNames.add(msg.sender));
@@ -677,7 +690,6 @@ class _RadarScreenState extends State<RadarScreen>
       return;
     }
 
-    // ─── معالجة SOS ───
     _messageLog.add(msg);
 
     if (mounted) {
@@ -685,7 +697,6 @@ class _RadarScreenState extends State<RadarScreen>
       _showSosReceived(msg);
     }
 
-    // إعادة الإرسال (relay)
     if (msg.ttl > 1) {
       final relay = SosMessage(
         id: msg.id,
@@ -706,9 +717,7 @@ class _RadarScreenState extends State<RadarScreen>
     String toSender,
     String toEndpointId,
   ) async {
-    // ✅ تجاهل في وضع الاختبار
     if (toEndpointId == _dummyEndpoint) return;
-
     final ack = SosMessage(
       id: 'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
       sender: _userName,
@@ -724,34 +733,25 @@ class _RadarScreenState extends State<RadarScreen>
     );
   }
 
-  Future<void> _relayMessage(
-    SosMessage msg,
-    String excludeEndpointId,
-  ) async {
+  Future<void> _relayMessage(SosMessage msg, String excludeEndpointId) async {
     final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
     final others = List<Map<String, dynamic>>.from(_targets)
         .where((t) => t['id'] != excludeEndpointId);
     await Future.wait(others.map((t) => _sendWithRetry(t['id'], data)));
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🔊 تنبيه الاستقبال
-  // ═══════════════════════════════════════════════════════════════
   Future<void> _alertSosReceived() async {
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
     SystemSound.play(SystemSoundType.alert);
-    Future.delayed(const Duration(milliseconds: 400),
-        () => HapticFeedback.vibrate());
-    Future.delayed(const Duration(milliseconds: 800),
-        () => HapticFeedback.vibrate());
-    Future.delayed(const Duration(milliseconds: 1200),
-        () => HapticFeedback.vibrate());
+    Future.delayed(
+        const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
+    Future.delayed(
+        const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
+    Future.delayed(
+        const Duration(milliseconds: 1200), () => HapticFeedback.vibrate());
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 💬 الحوارات
-  // ═══════════════════════════════════════════════════════════════
   void _showSosReceived(SosMessage msg) {
     if (!mounted) return;
     showDialog(
@@ -901,19 +901,16 @@ class _RadarScreenState extends State<RadarScreen>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: _ttlOptions.entries.map((entry) {
-            final selected = entry.value == _maxTtl;
+            final sel = entry.value == _maxTtl;
             return ListTile(
               leading: Icon(
-                selected
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
-                color: selected ? Colors.cyanAccent : Colors.grey,
+                sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                color: sel ? Colors.cyanAccent : Colors.grey,
               ),
               title: Text(
                 entry.key,
                 style: TextStyle(
-                  color: selected ? Colors.cyanAccent : Colors.white,
-                ),
+                    color: sel ? Colors.cyanAccent : Colors.white),
               ),
               onTap: () => Navigator.pop(ctx, entry.value),
             );
@@ -952,8 +949,7 @@ class _RadarScreenState extends State<RadarScreen>
             child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            style:
-                ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
             onPressed: () => Navigator.pop(ctx, controller.text),
             child: const Text('حفظ', style: TextStyle(color: Colors.black)),
           ),
@@ -961,7 +957,6 @@ class _RadarScreenState extends State<RadarScreen>
       ),
     );
     controller.dispose();
-
     if (result != null && result.trim().isNotEmpty) {
       setState(() => _sharedKey = result.trim());
       (await SharedPreferences.getInstance())
@@ -969,9 +964,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  // ═══════════════════════════════════════════════════════════════
-  // 🧹 التنظيف
-  // ═══════════════════════════════════════════════════════════════
   @override
   void dispose() {
     _discoveryTimer?.cancel();
@@ -979,3 +971,72 @@ class _RadarScreenState extends State<RadarScreen>
     _activeSosIdResetTimer?.cancel();
     Nearby().stopAdvertising();
     Nearby().stopDiscovery();
+    Nearby().stopAllEndpoints();
+    _sweepController.dispose();
+    _pulseController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0E17),
+      appBar: AppBar(
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.shield_moon, color: Colors.cyanAccent, size: 28),
+            const SizedBox(width: 10),
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Colors.cyanAccent, Colors.white, Colors.cyanAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(bounds),
+              child: const Text(
+                'الناصح',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+          ],
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.cyanAccent),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.auto_awesome, color: Colors.amberAccent),
+            tooltip: 'اختبار',
+            onPressed: _testIncomingSos,
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert, color: Colors.cyanAccent),
+            color: const Color(0xFF1E1E1E),
+            onSelected: (value) {
+              switch (value) {
+                case 'key':
+                  _showKeySettings();
+                  break;
+                case 'log':
+                  _showLog();
+                  break;
+                case 'ttl':
+                  _showTtlSelector();
+                  break;
+              }
+            },
+            itemBuilder: (ctx) => const [
+              PopupMenuItem(
+                value: 'key',
+                child: ListTile(
+                  leading: Icon(Icons.vpn_key, color: Colors.cyanAccent),
+                  title: Text('مفتاح التشفير',
+                      style: TextStyle(color: Colors.white)),
+                ),
+              ),
