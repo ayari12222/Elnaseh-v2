@@ -42,7 +42,8 @@ class _RadarScreenState extends State<RadarScreen>
   Timer? _activeSosIdResetTimer;
 
   String _userName = "مستخدم";
-  String get _advertiseName => "Elnaseh_$_userName";
+  String _deviceId = "";
+  String get _advertiseName => "Elnaseh_${_deviceId}_$_userName";
   String _sharedKey = "Elnaseh_Key_1";
   int _maxTtl = 5;
 
@@ -85,6 +86,14 @@ class _RadarScreenState extends State<RadarScreen>
     setState(() {
       _userName = prefs.getString('userName') ?? "مستخدم";
       _maxTtl = prefs.getInt('maxTtl') ?? 5;
+      
+      var savedId = prefs.getString('deviceId');
+      if (savedId == null || savedId.isEmpty) {
+        savedId = CryptoHelper.generateRandomKey().substring(0, 8);
+        prefs.setString('deviceId', savedId);
+      }
+      _deviceId = savedId;
+
       final savedKey = prefs.getString('sharedKey');
       if (savedKey == null || savedKey.isEmpty) {
         _sharedKey = CryptoHelper.generateRandomKey();
@@ -203,7 +212,7 @@ class _RadarScreenState extends State<RadarScreen>
             final angle = (_targets.length * (2 * pi / 8)) - (pi / 2);
             _targets.add({
               'id': id,
-              'name': name.replaceFirst("Elnaseh_", ""),
+              'name': name.split('_').last,
               'angle': angle + Random().nextDouble() * 0.15,
               'radius': _targetRadius,
               'color': Colors.amberAccent,
@@ -286,20 +295,24 @@ class _RadarScreenState extends State<RadarScreen>
     try {
       final unsent = await DatabaseHelper.instance.getUnsentMessages(endpointId);
       for (final rawMsg in unsent) {
-        final msg = SosMessage(
-          id: rawMsg['id'] as String,
-          sender: rawMsg['sender'] as String,
+        final encryptedContent = CryptoHelper.encrypt(rawMsg['content'] as String, _sharedKey);
+        final packet = MeshPacket(
+          messageId: rawMsg['id'] as String,
+          senderId: _deviceId,
+          senderName: rawMsg['sender'] as String,
+          targetId: "ALL",
           ttl: rawMsg['ttl'] as int,
-          content: rawMsg['content'] as String,
-          timestampMs: rawMsg['timestampMs'] as int,
           type: rawMsg['type'] as String,
+          timestampMs: rawMsg['timestampMs'] as int,
+          encryptedPayload: encryptedContent,
           lat: rawMsg['lat'] != null ? (rawMsg['lat'] as num).toDouble() : null,
           lng: rawMsg['lng'] != null ? (rawMsg['lng'] as num).toDouble() : null,
         );
-        final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
+        
+        final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
         final ok = await _sendWithRetry(endpointId, data);
         if (ok) {
-          await DatabaseHelper.instance.markAsSent(msg.id, endpointId);
+          await DatabaseHelper.instance.markAsSent(packet.messageId, endpointId);
         }
       }
     } catch (e) {
@@ -376,13 +389,16 @@ class _RadarScreenState extends State<RadarScreen>
     final now = DateTime.now().millisecondsSinceEpoch;
     final messageId = '${now}_${Random().nextInt(9999)}';
 
-    final sos = SosMessage(
-      id: messageId,
-      sender: _userName,
+    final encryptedContent = CryptoHelper.encrypt(customMessage.trim(), _sharedKey);
+    final packet = MeshPacket(
+      messageId: messageId,
+      senderId: _deviceId,
+      senderName: _userName,
+      targetId: "ALL",
       ttl: _maxTtl,
-      content: customMessage.trim(),
-      timestampMs: now,
       type: 'SOS',
+      timestampMs: now,
+      encryptedPayload: encryptedContent,
       lat: pos?.latitude,
       lng: pos?.longitude,
     );
@@ -392,18 +408,18 @@ class _RadarScreenState extends State<RadarScreen>
     _activeSosIdResetTimer?.cancel();
 
     await DatabaseHelper.instance.saveMessage({
-      'id': sos.id,
-      'sender': sos.sender,
-      'content': sos.content,
-      'ttl': sos.ttl,
-      'lat': sos.lat,
-      'lng': sos.lng,
-      'timestampMs': sos.timestampMs,
-      'type': sos.type,
+      'id': packet.messageId,
+      'sender': packet.senderName,
+      'content': customMessage.trim(),
+      'ttl': packet.ttl,
+      'lat': packet.lat,
+      'lng': packet.lng,
+      'timestampMs': packet.timestampMs,
+      'type': packet.type,
     });
 
     final targetsCopy = List<Map<String, dynamic>>.from(_targets);
-    final data = Uint8List.fromList(utf8.encode(sos.encode(_sharedKey)));
+    final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
 
     await Future.wait(targetsCopy.map((t) => _sendWithRetry(t['id'], data)));
     await Future.delayed(_ackTimeout);
@@ -470,12 +486,50 @@ class _RadarScreenState extends State<RadarScreen>
 
   void _onPayloadReceived(String fromEndpointId, Uint8List bytes) {
     final raw = utf8.decode(bytes, allowMalformed: true);
-    final msg = SosMessage.tryDecode(raw, _sharedKey);
-    if (msg == null) return;
-    if (msg.type != 'ACK' && msg.isExpired()) return;
+    final packet = MeshPacket.tryDecodePacket(raw);
+    
+    if (packet == null) return;
+    if (packet.type != 'ACK' && packet.isExpired()) return;
+
+    if (packet.targetId != "ALL" && packet.targetId != _deviceId) {
+      _relayPacket(packet, fromEndpointId);
+      return;
+    }
+
+    final decryptedContent = CryptoHelper.decrypt(packet.encryptedPayload, _sharedKey);
+    if (decryptedContent == null) return;
+
+    final msg = SosMessage(
+      id: packet.messageId,
+      sender: packet.senderName,
+      ttl: packet.ttl,
+      content: decryptedContent,
+      timestampMs: packet.timestampMs,
+      type: packet.type,
+      lat: packet.lat,
+      lng: packet.lng,
+    );
+
     _handleIncomingMessage(msg, fromEndpointId);
+
+    if (packet.ttl > 1) {
+      final relayPacket = MeshPacket(
+        messageId: packet.messageId,
+        senderId: packet.senderId,
+        senderName: packet.senderName,
+        targetId: packet.targetId,
+        ttl: packet.ttl - 1,
+        type: packet.type,
+        timestampMs: packet.timestampMs,
+        encryptedPayload: packet.encryptedPayload,
+        lat: packet.lat,
+        lng: packet.lng,
+      );
+      _relayPacket(relayPacket, fromEndpointId);
+    }
   }
 
+  
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
     if (msg.type == 'SOS') {
       _sendAck(msg.id, msg.sender, fromEndpointId);
@@ -504,7 +558,7 @@ class _RadarScreenState extends State<RadarScreen>
     }
 
     if (msg.type == 'ACK') {
-      if (_activeSosId != null && msg.ackFor == _activeSosId) {
+      if (_activeSosId != null && msg.content == _activeSosId) {
         if (mounted) setState(() => _ackedNames.add(msg.sender));
       }
       return;
@@ -516,20 +570,6 @@ class _RadarScreenState extends State<RadarScreen>
       _alertSosReceived();
       _showSosReceived(msg);
     }
-
-    if (msg.ttl > 1) {
-      final relay = SosMessage(
-        id: msg.id,
-        sender: msg.sender,
-        ttl: msg.ttl - 1,
-        content: msg.content,
-        timestampMs: msg.timestampMs,
-        type: 'SOS',
-        lat: msg.lat,
-        lng: msg.lng,
-      );
-      _relayMessage(relay, fromEndpointId);
-    }
   }
 
   Future<void> _sendAck(
@@ -538,40 +578,40 @@ class _RadarScreenState extends State<RadarScreen>
     String toEndpointId,
   ) async {
     if (toEndpointId == _dummyEndpoint) return;
-    final ack = SosMessage(
-      id:
-          'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
-      sender: _userName,
+    
+    final encryptedContent = CryptoHelper.encrypt(forMessageId, _sharedKey);
+    final packet = MeshPacket(
+      messageId: 'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
+      senderId: _deviceId,
+      senderName: _userName,
+      targetId: toSender,
       ttl: 1,
-      content: '',
-      timestampMs: DateTime.now().millisecondsSinceEpoch,
       type: 'ACK',
-      ackFor: forMessageId,
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      encryptedPayload: encryptedContent,
     );
+
     await _sendWithRetry(
       toEndpointId,
-      Uint8List.fromList(utf8.encode(ack.encode(_sharedKey))),
+      Uint8List.fromList(utf8.encode(packet.encodePacket())),
     );
   }
 
-  Future<void> _relayMessage(SosMessage msg, String excludeEndpointId) async {
-    final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
+  Future<void> _relayPacket(MeshPacket packet, String excludeEndpointId) async {
+    final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
     final others = List<Map<String, dynamic>>.from(_targets)
         .where((t) => t['id'] != excludeEndpointId);
+    
     await Future.wait(others.map((t) => _sendWithRetry(t['id'], data)));
   }
 
-  
   Future<void> _alertSosReceived() async {
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
     SystemSound.play(SystemSoundType.alert);
-    Future.delayed(
-        const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
-    Future.delayed(
-        const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
-    Future.delayed(
-        const Duration(milliseconds: 1200), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 1200), () => HapticFeedback.vibrate());
   }
 
   void _showSosReceived(SosMessage msg) {
@@ -679,7 +719,7 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            ..._messageLog.reversed.map((m) {
+            ..._messageLog.reversed.map<SosMessage>((m) {
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text(
@@ -698,8 +738,7 @@ class _RadarScreenState extends State<RadarScreen>
                             'https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}',
                           );
                           if (await canLaunchUrl(url)) {
-                            await launchUrl(url,
-                                mode: LaunchMode.externalApplication);
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
                           }
                         },
                       )
@@ -726,15 +765,12 @@ class _RadarScreenState extends State<RadarScreen>
             final sel = entry.value == _maxTtl;
             return ListTile(
               leading: Icon(
-                sel
-                    ? Icons.radio_button_checked
-                    : Icons.radio_button_unchecked,
+                sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
                 color: sel ? Colors.cyanAccent : Colors.grey,
               ),
               title: Text(
                 entry.key,
-                style:
-                    TextStyle(color: sel ? Colors.cyanAccent : Colors.white),
+                style: TextStyle(color: sel ? Colors.cyanAccent : Colors.white),
               ),
               onTap: () => Navigator.pop(ctx, entry.value),
             );
@@ -783,8 +819,7 @@ class _RadarScreenState extends State<RadarScreen>
     controller.dispose();
     if (result != null && result.trim().isNotEmpty) {
       setState(() => _sharedKey = result.trim());
-      (await SharedPreferences.getInstance())
-          .setString('sharedKey', _sharedKey);
+      (await SharedPreferences.getInstance()).setString('sharedKey', _sharedKey);
     }
   }
 
@@ -844,15 +879,9 @@ class _RadarScreenState extends State<RadarScreen>
             color: const Color(0xFF1E1E1E),
             onSelected: (value) {
               switch (value) {
-                case 'key':
-                  _showKeySettings();
-                  break;
-                case 'log':
-                  _showLog();
-                  break;
-                case 'ttl':
-                  _showTtlSelector();
-                  break;
+                case 'key': _showKeySettings(); break;
+                case 'log': _showLog(); break;
+                case 'ttl': _showTtlSelector(); break;
               }
             },
             itemBuilder: (ctx) => const [
@@ -860,8 +889,7 @@ class _RadarScreenState extends State<RadarScreen>
                 value: 'key',
                 child: ListTile(
                   leading: Icon(Icons.vpn_key, color: Colors.cyanAccent),
-                  title: Text('مفتاح التشفير',
-                      style: TextStyle(color: Colors.white)),
+                  title: Text('مفتاح التشفير', style: TextStyle(color: Colors.white)),
                 ),
               ),
               PopupMenuItem(
@@ -875,8 +903,7 @@ class _RadarScreenState extends State<RadarScreen>
                 value: 'ttl',
                 child: ListTile(
                   leading: Icon(Icons.tune, color: Colors.cyanAccent),
-                  title: Text('مدى الانتشار',
-                      style: TextStyle(color: Colors.white)),
+                  title: Text('مدى الانتشار', style: TextStyle(color: Colors.white)),
                 ),
               ),
             ],
@@ -885,10 +912,7 @@ class _RadarScreenState extends State<RadarScreen>
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final size = max(
-            0.0,
-            min(constraints.maxWidth, constraints.maxHeight - 120),
-          );
+          final size = max(0.0, min(constraints.maxWidth, constraints.maxHeight - 120));
           final center = size / 2;
           final radius = size * 0.36;
 
@@ -911,19 +935,14 @@ class _RadarScreenState extends State<RadarScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.cyanAccent.withOpacity(
-                                  0.1 + (_pulseController.value * 0.2),
-                                ),
+                                color: Colors.cyanAccent.withOpacity(0.1 + (_pulseController.value * 0.2)),
                                 width: 1.5,
                               ),
                             ),
                           ),
                         ),
                       ),
-                      CustomPaint(
-                        size: Size(size, size),
-                        painter: RadarGridPainter(),
-                      ),
+                      CustomPaint(size: Size(size, size), painter: RadarGridPainter()),
                       AnimatedBuilder(
                         animation: _sweepController,
                         builder: (context, child) => Container(
@@ -938,9 +957,7 @@ class _RadarScreenState extends State<RadarScreen>
                                 Colors.cyanAccent.withOpacity(0.0),
                               ],
                               stops: const [0.0, 0.5, 1.0],
-                              transform: GradientRotation(
-                                _sweepController.value * 2 * pi,
-                              ),
+                              transform: GradientRotation(_sweepController.value * 2 * pi),
                             ),
                           ),
                         ),
@@ -960,14 +977,12 @@ class _RadarScreenState extends State<RadarScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: (t['color'] as Color)
-                                          .withOpacity(0.8),
+                                      color: (t['color'] as Color).withOpacity(0.8),
                                       blurRadius: 15,
                                       spreadRadius: 2,
                                     ),
                                   ],
-                                  border: Border.all(
-                                      color: Colors.white, width: 1.5),
+                                  border: Border.all(color: Colors.white, width: 1.5),
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -990,11 +1005,7 @@ class _RadarScreenState extends State<RadarScreen>
                           color: Colors.white,
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(
-                              color: Colors.cyanAccent,
-                              blurRadius: 20,
-                              spreadRadius: 5,
-                            ),
+                            BoxShadow(color: Colors.cyanAccent, blurRadius: 20, spreadRadius: 5),
                           ],
                         ),
                       ),
@@ -1014,12 +1025,7 @@ class _RadarScreenState extends State<RadarScreen>
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
-                      shadows: [
-                        Shadow(
-                          color: Colors.cyanAccent.withOpacity(0.5),
-                          blurRadius: 10,
-                        ),
-                      ],
+                      shadows: [Shadow(color: Colors.cyanAccent.withOpacity(0.5), blurRadius: 10)],
                     ),
                   ),
                 ),
@@ -1031,24 +1037,17 @@ class _RadarScreenState extends State<RadarScreen>
                 child: Center(
                   child: FloatingActionButton.extended(
                     onPressed: _isSosSending ? null : _sendSosBroadcast,
-                    backgroundColor:
-                        _isSosSending ? Colors.grey : Colors.redAccent,
+                    backgroundColor: _isSosSending ? Colors.grey : Colors.redAccent,
                     icon: _isSosSending
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                           )
                         : const Icon(Icons.warning, color: Colors.white),
                     label: Text(
                       _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
