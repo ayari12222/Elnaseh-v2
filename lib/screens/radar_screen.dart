@@ -1,12 +1,77 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
 
+// ============================================================
+// نموذج الرسالة — JSON + Base64 (بدون مكتبات إضافية)
+// ============================================================
+class SosMessage {
+  final String id;
+  final String sender;
+  final int ttl;
+  final String content;
+  final int timestampMs;
+  final String type; // "SOS" أو "ACK"
+  final String? ackFor;
+
+  SosMessage({
+    required this.id,
+    required this.sender,
+    required this.ttl,
+    required this.content,
+    required this.timestampMs,
+    required this.type,
+    this.ackFor,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        's': sender,
+        'ttl': ttl,
+        'c': content,
+        't': timestampMs,
+        'ty': type,
+        if (ackFor != null) 'af': ackFor,
+      };
+
+  factory SosMessage.fromJson(Map<String, dynamic> j) => SosMessage(
+        id: j['id'] as String,
+        sender: j['s'] as String,
+        ttl: j['ttl'] as int,
+        content: j['c'] as String,
+        timestampMs: j['t'] as int,
+        type: j['ty'] as String,
+        ackFor: j['af'] as String?,
+      );
+
+  String encode() => base64Encode(utf8.encode(jsonEncode(toJson())));
+
+  static SosMessage? tryDecode(String s) {
+    try {
+      final json = jsonDecode(utf8.decode(base64Decode(s)));
+      return SosMessage.fromJson(json as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool isExpired({Duration maxAge = const Duration(minutes: 30)}) {
+    final age = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(timestampMs));
+    return age > maxAge;
+  }
+}
+
+// ============================================================
+// شاشة الرادار
+// ============================================================
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
 
@@ -14,7 +79,8 @@ class RadarScreen extends StatefulWidget {
   State<RadarScreen> createState() => _RadarScreenState();
 }
 
-class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin {
+class _RadarScreenState extends State<RadarScreen>
+    with TickerProviderStateMixin {
   late AnimationController _sweepController;
   late AnimationController _pulseController;
 
@@ -23,8 +89,13 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   bool _isAdvertising = false;
   bool _isSosSending = false;
 
-  final Set<String> _receivedMessageIds = {};
+  final Set<String> _processedMessageIds = {};
+  final List<SosMessage> _messageLog = [];
+
   Timer? _discoveryTimer;
+  Timer? _stopDiscoveryTimer;
+
+  final Map<String, bool> _connectedEndpoints = {};
 
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
@@ -33,7 +104,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   final String serviceId = "com.elnaseh.app";
 
   static const double _targetRadius = 180.0;
-  static const double _centerOffset = 250.0;
   static const int _maxTargets = 20;
 
   int _maxTtl = 5;
@@ -43,6 +113,11 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     'بعيد (10)': 10,
     'طوارئ قصوى (15)': 15,
   };
+
+  static const Duration _ackTimeout = Duration(seconds: 5);
+
+  String? _activeSosId;
+  final Set<String> _ackedNames = {};
 
   @override
   void initState() {
@@ -62,14 +137,18 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   Future<void> _loadUserName() async {
     final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
     setState(() {
       _userName = prefs.getString('userName') ?? "مستخدم";
       _maxTtl = prefs.getInt('maxTtl') ?? 5;
     });
   }
 
+  // ------------------------------------------------------------
+  // إعداد Nearby + طلب الأذونات
+  // ------------------------------------------------------------
   Future<void> _initNearby() async {
-    Map<Permission, PermissionStatus> statuses = await [
+    final statuses = await [
       Permission.location,
       Permission.bluetooth,
       Permission.bluetoothScan,
@@ -78,90 +157,106 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       Permission.nearbyWifiDevices,
     ].request();
 
-    if (statuses[Permission.location]!.isGranted &&
-        statuses[Permission.bluetoothScan]!.isGranted) {
-      _startAdvertising();
+    final locationOk = statuses[Permission.location]?.isGranted ?? false;
+    final scanOk = statuses[Permission.bluetoothScan]?.isGranted ?? false;
+
+    if (locationOk && scanOk) {
+      await _startAdvertising();
       _startDiscoveryWithTimer();
     } else {
-      debugPrint("الأذونات غير ممنوحة");
+      debugPrint("⚠️ الأذونات غير ممنوحة");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('يجب منح أذونات الموقع والبلوتوث للعمل'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
     }
   }
 
+  // ------------------------------------------------------------
+  // الإعلان عن الجهاز
+  // ------------------------------------------------------------
   Future<void> _startAdvertising() async {
     if (_isAdvertising) return;
     try {
-      bool isSuccess = await Nearby().startAdvertising(
+      final ok = await Nearby().startAdvertising(
         _advertiseName,
         strategy,
-        onConnectionInitiated: (id, info) {
-          Nearby().acceptConnection(
+        onConnectionInitiated: (id, info) async {
+          await Nearby().acceptConnection(
             id,
             onPayLoadRecieved: (endpointId, payload) {
-              if (payload.type == PayloadType.BYTES) {
-                String message = String.fromCharCodes(
-                  Uint8List.fromList(payload.bytes!),
-                );
-                _handleIncomingMessage(message);
+              if (payload.type == PayloadType.BYTES && payload.bytes != null) {
+                final raw = utf8.decode(payload.bytes!, allowMalformed: true);
+                final msg = SosMessage.tryDecode(raw);
+                if (msg != null) _handleIncomingMessage(msg, endpointId);
               }
             },
             onPayloadTransferUpdate: (endpointId, update) {},
           );
+          _connectedEndpoints[id] = true;
         },
-        onConnectionResult: (id, status) {},
-        onDisconnected: (id) {},
+        onConnectionResult: (id, status) {
+          if (status == Status.CONNECTED) {
+            _connectedEndpoints[id] = true;
+          } else {
+            _connectedEndpoints.remove(id);
+          }
+        },
+        onDisconnected: (id) {
+          _connectedEndpoints.remove(id);
+        },
         serviceId: serviceId,
       );
-      if (isSuccess) {
+      if (ok) {
         setState(() => _isAdvertising = true);
-        debugPrint("بدأ الإعلان بنجاح");
+        debugPrint("✅ بدأ الإعلان");
       }
     } catch (e) {
-      debugPrint("فشل الإعلان: $e");
+      debugPrint("❌ فشل الإعلان: $e");
     }
   }
 
-  // ✅ تحسين: البحث يعمل 10 ثوانٍ، ثم يتوقف 30 ثانية
+  // ------------------------------------------------------------
+  // دورة البحث: 30 ثانية بحث + 5 ثوانٍ توقف
+  // ------------------------------------------------------------
   void _startDiscoveryWithTimer() {
     _startDiscovery();
-    _discoveryTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      if (_isScanning) {
-        Nearby().stopDiscovery();
-        setState(() => _isScanning = false);
-      } else {
-        _startDiscovery();
-      }
+    _discoveryTimer = Timer.periodic(const Duration(seconds: 35), (_) {
+      _startDiscovery();
     });
   }
 
   Future<void> _startDiscovery() async {
-    if (_isScanning) return;
-    setState(() => _isScanning = true);
+    if (!mounted) return;
     try {
-      bool isSuccess = await Nearby().startDiscovery(
+      await Nearby().stopDiscovery().catchError((_) {});
+
+      setState(() => _isScanning = true);
+
+      final ok = await Nearby().startDiscovery(
         _userName,
         strategy,
-        onEndpointFound: (id, name, serviceId) {
-          if (serviceId != this.serviceId) return;
+        onEndpointFound: (id, name, svcId) {
+          if (svcId != serviceId) return;
+          if (_targets.any((t) => t['id'] == id)) return;
 
-          if (!_targets.any((t) => t['id'] == id)) {
-            setState(() {
-              // ✅ تحسين: حذف أقدم جهاز إذا وصلنا للحد الأقصى
-              if (_targets.length >= _maxTargets) {
-                _targets.removeAt(0);
-              }
-
-              final double angle =
-                  (_targets.length * (2 * pi / 8)) - (pi / 2);
-
-              _targets.add({
-                'id': id,
-                'name': name.replaceFirst("Elnaseh_", ""),
-                'angle': angle,
-                'radius': _targetRadius,
-                'color': Colors.cyanAccent,
-              });
+          setState(() {
+            if (_targets.length >= _maxTargets) {
+              _targets.removeAt(0);
+            }
+            _targets.add({
+              'id': id,
+              'name': name.replaceFirst("Elnaseh_", ""),
+              'angle': 0.0,
+              'radius': _targetRadius,
+              'color': Colors.cyanAccent,
             });
-          }
+            _reassignAngles();
+          });
         },
         onEndpointLost: (id) {
           setState(() {
@@ -171,21 +266,38 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         },
         serviceId: serviceId,
       );
-      if (!isSuccess) {
-        setState(() => _isScanning = false);
+
+      if (!ok) {
+        if (mounted) setState(() => _isScanning = false);
+        return;
       }
+
+      _stopDiscoveryTimer?.cancel();
+      _stopDiscoveryTimer = Timer(const Duration(seconds: 30), () async {
+        await Nearby().stopDiscovery().catchError((_) {});
+        if (mounted) setState(() => _isScanning = false);
+      });
     } catch (e) {
-      debugPrint("فشل البحث: $e");
-      setState(() => _isScanning = false);
+      debugPrint("❌ فشل البحث: $e");
+      if (mounted) setState(() => _isScanning = false);
     }
   }
 
+  // ------------------------------------------------------------
+  // توزيع الزوايا — عادل + انحراف بسيط
+  // ------------------------------------------------------------
   void _reassignAngles() {
+    if (_targets.isEmpty) return;
+    final step = 2 * pi / _targets.length;
+    final rand = Random();
     for (int i = 0; i < _targets.length; i++) {
-      _targets[i]['angle'] = (i * (2 * pi / 8)) - (pi / 2);
+      _targets[i]['angle'] = (i * step) - (pi / 2) + rand.nextDouble() * 0.15;
     }
   }
 
+  // ------------------------------------------------------------
+  // اختيار TTL
+  // ------------------------------------------------------------
   Future<void> _showTtlSelector() async {
     final selected = await showDialog<int>(
       context: context,
@@ -236,6 +348,9 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
+  // ------------------------------------------------------------
+  // إرسال SOS مع انتظار ACK
+  // ------------------------------------------------------------
   Future<void> _sendSosBroadcast() async {
     if (_targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -247,116 +362,191 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       return;
     }
 
-    String? customMessage = await showDialog<String>(
-      context: context,
-      builder: (context) {
-        String message = "";
-        return AlertDialog(
-          backgroundColor: const Color(0xFF1E1E1E),
-          title: const Text(
-            'إرسال نداء استغاثة',
-            style: TextStyle(color: Colors.cyanAccent),
-          ),
-          content: TextField(
-            autofocus: true,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              hintText: 'اكتب رسالتك هنا...',
-              hintStyle: TextStyle(color: Colors.grey),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.cyanAccent),
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.cyanAccent, width: 2),
-              ),
-            ),
-            onChanged: (value) => message = value,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, null),
-              child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
-            ),
-            ElevatedButton(
-              style:
-                  ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-              onPressed: () => Navigator.pop(context, message),
-              child:
-                  const Text('إرسال', style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        );
-      },
+    final customMessage = await _askForMessage();
+    if (customMessage == null || customMessage.trim().isEmpty) return;
+
+    setState(() {
+      _isSosSending = true;
+      _ackedNames.clear();
+    });
+    HapticFeedback.heavyImpact();
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final messageId = '${now}_${Random().nextInt(9999)}';
+
+    final sos = SosMessage(
+      id: messageId,
+      sender: _userName,
+      ttl: _maxTtl,
+      content: customMessage.trim(),
+      timestampMs: now,
+      type: 'SOS',
     );
 
-    if (customMessage == null || customMessage.trim().isEmpty) {
-      return;
-    }
+    _processedMessageIds.add(messageId);
+    _activeSosId = messageId;
 
-    setState(() => _isSosSending = true);
-    HapticFeedback.vibrate();
+    final targetsCopy = List<Map<String, dynamic>>.from(_targets);
+    final encoded = sos.encode();
 
-    String messageId = DateTime.now().millisecondsSinceEpoch.toString();
-    String fullMessage = "🚨 SOS|$messageId|$_userName|$_maxTtl|$customMessage";
-    _receivedMessageIds.add(messageId);
-
-    for (var target in _targets) {
+    for (final target in targetsCopy) {
       try {
         await Nearby().sendBytesPayload(
           target['id'],
-          Uint8List.fromList(fullMessage.codeUnits),
+          Uint8List.fromList(utf8.encode(encoded)),
         );
       } catch (e) {
-        debugPrint("فشل الإرسال إلى ${target['name']}: $e");
+        debugPrint("❌ فشل الإرسال إلى ${target['name']}: $e");
       }
     }
 
+    final totalTargets = targetsCopy.length;
+    await Future.delayed(_ackTimeout);
+
+    if (!mounted) return;
+
     setState(() => _isSosSending = false);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم إرسال الاستغاثة بمدى $_maxTtl قفزات'),
-          backgroundColor: Colors.green,
+
+    final ackedCount = _ackedNames.length;
+    String feedback;
+    Color color;
+    if (ackedCount == 0) {
+      feedback = '⚠️ لم يصل التأكيد من أي جهاز — قد لا تكون الاستغاثة وصلت';
+      color = Colors.red;
+    } else if (ackedCount < totalTargets) {
+      feedback =
+          '✅ وصل التأكيد من $ackedCount من أصل $totalTargets جهاز\n(${_ackedNames.join("، ")})';
+      color = Colors.orange;
+    } else {
+      feedback = '✅ وصلت الاستغاثة إلى جميع الأجهزة ($ackedCount)';
+      color = Colors.green;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(feedback), backgroundColor: color),
+    );
+
+    _activeSosId = null;
+  }
+
+  Future<String?> _askForMessage() async {
+    String message = "";
+    return showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          'إرسال نداء استغاثة',
+          style: TextStyle(color: Colors.cyanAccent),
         ),
+        content: TextField(
+          autofocus: true,
+          style: const TextStyle(color: Colors.white),
+          maxLength: 200,
+          decoration: const InputDecoration(
+            hintText: 'اكتب رسالتك هنا...',
+            hintStyle: TextStyle(color: Colors.grey),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.cyanAccent),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.cyanAccent, width: 2),
+            ),
+          ),
+          onChanged: (v) => message = v,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style:
+                ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(context, message),
+            child:
+                const Text('إرسال', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ------------------------------------------------------------
+  // استقبال رسالة (SOS أو ACK)
+  // ------------------------------------------------------------
+  void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
+    if (msg.isExpired()) {
+      debugPrint("⏰ رسالة منتهية الصلاحية: ${msg.id}");
+      return;
+    }
+
+    if (_processedMessageIds.contains(msg.id)) return;
+    _processedMessageIds.add(msg.id);
+
+    // رد ACK
+    if (msg.type == 'ACK') {
+      if (_activeSosId != null && msg.ackFor == _activeSosId) {
+        setState(() => _ackedNames.add(msg.sender));
+      }
+      return;
+    }
+
+    // استلام SOS
+    _sendAck(msg.id, msg.sender, fromEndpointId);
+
+    _messageLog.add(msg);
+    if (mounted) {
+      HapticFeedback.heavyImpact();
+      _showSosReceived(msg.sender, msg.content);
+    }
+
+    if (msg.ttl > 1) {
+      final relay = SosMessage(
+        id: msg.id,
+        sender: msg.sender,
+        ttl: msg.ttl - 1,
+        content: msg.content,
+        timestampMs: msg.timestampMs,
+        type: 'SOS',
       );
+      _relayMessage(relay);
     }
   }
 
-  void _handleIncomingMessage(String message) {
-    List<String> parts = message.split('|');
-    if (parts.length < 5) return;
-    if (parts[0] != "🚨 SOS") return;
-
-    String messageId = parts[1];
-    String senderName = parts[2];
-    int ttl = int.tryParse(parts[3]) ?? 0;
-    String content = parts[4];
-
-    if (_receivedMessageIds.contains(messageId)) return;
-    _receivedMessageIds.add(messageId);
-
-    _showSosReceived(senderName, content);
-
-    if (ttl > 1) {
-      String relayed = "🚨 SOS|$messageId|$senderName|${ttl - 1}|$content";
-      _relayMessage(relayed);
+  Future<void> _sendAck(
+      String forMessageId, String toSender, String toEndpointId) async {
+    final ack = SosMessage(
+      id: 'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
+      sender: _userName,
+      ttl: 1,
+      content: '',
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      type: 'ACK',
+      ackFor: forMessageId,
+    );
+    final data = Uint8List.fromList(utf8.encode(ack.encode()));
+    try {
+      await Nearby().sendBytesPayload(toEndpointId, data);
+    } catch (e) {
+      debugPrint("❌ فشل إرسال ACK: $e");
     }
   }
 
-  Future<void> _relayMessage(String originalMessage) async {
-    for (var target in _targets) {
+  Future<void> _relayMessage(SosMessage msg) async {
+    final data = Uint8List.fromList(utf8.encode(msg.encode()));
+    final targetsCopy = List<Map<String, dynamic>>.from(_targets);
+    for (final target in targetsCopy) {
       try {
-        await Nearby().sendBytesPayload(
-          target['id'],
-          Uint8List.fromList(originalMessage.codeUnits),
-        );
+        await Nearby().sendBytesPayload(target['id'], data);
       } catch (e) {
-        debugPrint("فشل إعادة الإرسال إلى ${target['name']}: $e");
+        debugPrint("❌ فشل إعادة البث إلى ${target['name']}: $e");
       }
     }
   }
 
   void _showSosReceived(String senderName, String content) {
+    if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -369,9 +559,54 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child:
-                const Text('حسناً', style: TextStyle(color: Colors.cyanAccent)),
+            child: const Text('حسناً',
+                style: TextStyle(color: Colors.cyanAccent)),
           ),
+        ],
+      ),
+    );
+  }
+
+  void _showLog() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1E1E1E),
+      builder: (context) => ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text(
+            '📜 سجل الرسائل',
+            style: TextStyle(
+              color: Colors.cyanAccent,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const Divider(color: Colors.grey),
+          if (_messageLog.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(20),
+              child: Text(
+                'لا توجد رسائل بعد',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ..._messageLog.reversed.map((m) {
+              final time = DateTime.fromMillisecondsSinceEpoch(m.timestampMs);
+              return ListTile(
+                leading: const Icon(Icons.warning, color: Colors.redAccent),
+                title: Text(
+                  'من: ${m.sender}',
+                  style: const TextStyle(color: Colors.cyanAccent),
+                ),
+                subtitle: Text(
+                  '${m.content}\n${time.hour}:${time.minute.toString().padLeft(2, "0")}',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                isThreeLine: true,
+              );
+            }),
         ],
       ),
     );
@@ -380,6 +615,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   @override
   void dispose() {
     _discoveryTimer?.cancel();
+    _stopDiscoveryTimer?.cancel();
     Nearby().stopAdvertising();
     Nearby().stopDiscovery();
     Nearby().stopAllEndpoints();
@@ -407,6 +643,11 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
           IconButton(
+            icon: const Icon(Icons.history, color: Colors.cyanAccent),
+            tooltip: 'السجل',
+            onPressed: _showLog,
+          ),
+          IconButton(
             icon: const Icon(Icons.tune, color: Colors.cyanAccent),
             tooltip: 'مدى الانتشار: $_maxTtl قفزات',
             onPressed: _showTtlSelector,
@@ -427,164 +668,155 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          Center(
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  ...List.generate(4, (i) {
-                    return AnimatedBuilder(
-                      animation: _pulseController,
-                      builder: (context, child) {
-                        return Container(
-                          width: 120.0 * (i + 1),
-                          height: 120.0 * (i + 1),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.cyanAccent.withOpacity(
-                                0.1 + (_pulseController.value * 0.2),
-                              ),
-                              width: 1.5,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.cyanAccent.withOpacity(0.05),
-                                blurRadius: 20,
-                                spreadRadius: 5,
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    );
-                  }),
-                  CustomPaint(
-                    size: const Size(500, 500),
-                    painter: RadarGridPainter(),
-                  ),
-                  AnimatedBuilder(
-                    animation: _sweepController,
-                    builder: (context, child) {
-                      return Transform.rotate(
-                        angle: _sweepController.value * 2 * pi,
-                        child: Container(
-                          width: 250,
-                          height: 250,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: SweepGradient(
-                              colors: [
-                                Colors.cyanAccent.withOpacity(0.0),
-                                Colors.cyanAccent.withOpacity(0.4),
-                                Colors.cyanAccent.withOpacity(0.0),
-                              ],
-                              stops: const [0.0, 0.5, 1.0],
-                              startAngle: 0.0,
-                              endAngle: pi * 2,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                  ..._targets.map((t) {
-                    final double radius = t['radius'] as double;
-                    final double angle = t['angle'] as double;
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final size = min(constraints.maxWidth, constraints.maxHeight - 120);
+          final center = size / 2;
+          final radius = size * 0.36;
 
-                    return Positioned(
-                      left: _centerOffset + radius * cos(angle) - 12,
-                      top: _centerOffset + radius * sin(angle) - 12,
-                      child: Column(
-                        children: [
-                          Container(
-                            width: 24,
-                            height: 24,
+          return Stack(
+            children: [
+              Center(
+                child: SizedBox(
+                  width: size,
+                  height: size,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      ...List.generate(4, (i) {
+                        return AnimatedBuilder(
+                          animation: _pulseController,
+                          builder: (context, child) => Container(
+                            width: (size / 4) * (i + 1),
+                            height: (size / 4) * (i + 1),
                             decoration: BoxDecoration(
-                              color: t['color'] as Color,
                               shape: BoxShape.circle,
-                              boxShadow: [
-                                BoxShadow(
-                                  color:
-                                      (t['color'] as Color).withOpacity(0.8),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                ),
-                              ],
                               border: Border.all(
-                                color: Colors.white,
+                                color: Colors.cyanAccent.withOpacity(
+                                  0.1 + (_pulseController.value * 0.2),
+                                ),
                                 width: 1.5,
                               ),
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            t['name'],
-                            style: TextStyle(
-                              color: t['color'] as Color,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                              shadows: const [
-                                Shadow(color: Colors.black, blurRadius: 4),
-                              ],
+                        );
+                      }),
+                      CustomPaint(
+                        size: Size(size, size),
+                        painter: RadarGridPainter(),
+                      ),
+                      AnimatedBuilder(
+                        animation: _sweepController,
+                        builder: (context, child) => Transform.rotate(
+                          angle: _sweepController.value * 2 * pi,
+                          child: Container(
+                            width: size * 0.5,
+                            height: size * 0.5,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: SweepGradient(
+                                colors: [
+                                  Colors.cyanAccent.withOpacity(0.0),
+                                  Colors.cyanAccent.withOpacity(0.4),
+                                  Colors.cyanAccent.withOpacity(0.0),
+                                ],
+                                stops: const [0.0, 0.5, 1.0],
+                              ),
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    );
-                  }).toList(),
-                  Container(
-                    width: 16,
-                    height: 16,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.cyanAccent,
-                          blurRadius: 20,
-                          spreadRadius: 5,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 30,
-            left: 0,
-            right: 0,
-            child: Center(
-              child: FloatingActionButton.extended(
-                onPressed: _isSosSending ? null : _sendSosBroadcast,
-                backgroundColor:
-                    _isSosSending ? Colors.grey : Colors.redAccent,
-                icon: _isSosSending
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
+                      ..._targets.map((t) {
+                        final double a = t['angle'] as double;
+                        return Positioned(
+                          left: center + radius * cos(a) - 12,
+                          top: center + radius * sin(a) - 12,
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: t['color'] as Color,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (t['color'] as Color)
+                                          .withOpacity(0.8),
+                                      blurRadius: 15,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                t['name'],
+                                style: TextStyle(
+                                  color: t['color'] as Color,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      Container(
+                        width: 16,
+                        height: 16,
+                        decoration: const BoxDecoration(
                           color: Colors.white,
-                          strokeWidth: 2,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.cyanAccent,
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
                         ),
-                      )
-                    : const Icon(Icons.warning, color: Colors.white),
-                label: Text(
-                  _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                      ),
+                    ],
                   ),
                 ),
               ),
-            ),
-          ),
-        ],
+              Positioned(
+                bottom: 30,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: FloatingActionButton.extended(
+                    onPressed: _isSosSending ? null : _sendSosBroadcast,
+                    backgroundColor:
+                        _isSosSending ? Colors.grey : Colors.redAccent,
+                    icon: _isSosSending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.warning, color: Colors.white),
+                    label: Text(
+                      _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -601,8 +833,10 @@ class RadarGridPainter extends CustomPainter {
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
 
-    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), paint);
-    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), paint);
+    canvas.drawLine(
+        Offset(center.dx, 0), Offset(center.dx, size.height), paint);
+    canvas.drawLine(
+        Offset(0, center.dy), Offset(size.width, center.dy), paint);
 
     canvas.drawLine(Offset(0, 0), Offset(size.width, size.height), paint);
     canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), paint);
