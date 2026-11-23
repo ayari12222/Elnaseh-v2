@@ -267,11 +267,21 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
+  // ✅ دالة التنبيه المحسنة (اهتزاز وصوت)
   void _alertSosReceived() {
+    HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
     SystemSound.play(SystemSoundType.alert);
-    Future.delayed(const Duration(milliseconds: 300), () => HapticFeedback.heavyImpact());
-    Future.delayed(const Duration(milliseconds: 600), () => HapticFeedback.heavyImpact());
+    SystemSound.play(SystemSoundType.click);
+
+    Future.delayed(const Duration(milliseconds: 400), () {
+      HapticFeedback.vibrate();
+      SystemSound.play(SystemSoundType.alert);
+    });
+    Future.delayed(const Duration(milliseconds: 800), () {
+      HapticFeedback.vibrate();
+      SystemSound.play(SystemSoundType.alert);
+    });
   }
 
   Future<bool> _sendWithRetry(String endpointId, Uint8List data) async {
@@ -415,7 +425,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
               onPressed: () async {
                 final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=${msg.lat},${msg.lng}');
                 try {
-                  // إجبار الفتح في تطبيق خارجي
                   await launchUrl(url, mode: LaunchMode.externalApplication);
                 } catch (e) {
                   if (context.mounted) {
