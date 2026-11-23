@@ -31,6 +31,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   final Strategy strategy = Strategy.P2P_CLUSTER;
   final String serviceId = "com.elnaseh.app";
 
+  // ✅ ثوابت التوزيع البصري (المرحلة 1)
+  static const double _targetRadius = 180.0;
+  static const double _centerOffset = 250.0;
+
   @override
   void initState() {
     super.initState();
@@ -114,13 +118,18 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         strategy,
         onEndpointFound: (id, name, serviceId) {
           if (serviceId != this.serviceId) return;
-          
+
           if (!_targets.any((t) => t['id'] == id)) {
             setState(() {
+              // ✅ زاوية ثابتة لكل جهاز حسب ترتيب اكتشافه (المرحلة 1)
+              final double angle =
+                  (_targets.length * (2 * pi / 8)) - (pi / 2);
+
               _targets.add({
                 'id': id,
                 'name': name.replaceFirst("Elnaseh_", ""),
-                'distance': 0.3 + (Random().nextDouble() * 0.5),
+                'angle': angle,
+                'radius': _targetRadius,
                 'color': Colors.cyanAccent,
               });
             });
@@ -129,6 +138,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         onEndpointLost: (id) {
           setState(() {
             _targets.removeWhere((t) => t['id'] == id);
+            _reassignAngles();
           });
         },
         serviceId: serviceId,
@@ -139,6 +149,13 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     } catch (e) {
       debugPrint("فشل البحث: $e");
       setState(() => _isScanning = false);
+    }
+  }
+
+  // ✅ إعادة توزيع الزوايا بعد أي حذف (المرحلة 1)
+  void _reassignAngles() {
+    for (int i = 0; i < _targets.length; i++) {
+      _targets[i]['angle'] = (i * (2 * pi / 8)) - (pi / 2);
     }
   }
 
@@ -384,24 +401,25 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                       );
                     },
                   ),
+                  // ✅ الأهداف — استخدام الزاوية والمسافة الثابتتين (المرحلة 1)
                   ..._targets.map((t) {
-                    double radius = 220 * (t['distance'] as num).toDouble();
-                    double angle = (t['name'].hashCode % 360) * (pi / 180);
+                    final double radius = t['radius'] as double;
+                    final double angle = t['angle'] as double;
 
                     return Positioned(
-                      left: 250 + radius * cos(angle) - 12,
-                      top: 250 + radius * sin(angle) - 12,
+                      left: _centerOffset + radius * cos(angle) - 12,
+                      top: _centerOffset + radius * sin(angle) - 12,
                       child: Column(
                         children: [
                           Container(
                             width: 24,
                             height: 24,
                             decoration: BoxDecoration(
-                              color: t['color'],
+                              color: t['color'] as Color,
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: t['color'].withOpacity(0.8),
+                                  color: (t['color'] as Color).withOpacity(0.8),
                                   blurRadius: 15,
                                   spreadRadius: 2,
                                 ),
@@ -413,7 +431,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                           Text(
                             t['name'],
                             style: TextStyle(
-                              color: t['color'],
+                              color: t['color'] as Color,
                               fontSize: 11,
                               fontWeight: FontWeight.bold,
                               shadows: const [
