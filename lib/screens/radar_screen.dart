@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:typed_data'; // <-- تمت إضافة هذا السطر
 import 'package:flutter/material.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -83,7 +84,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             id,
             onPayLoadRecieved: (endpointId, payload) {
               if (payload.type == PayloadType.BYTES) {
-                String message = String.fromCharCodes(payload.bytes!);
+                // التصحيح: استخدام Uint8List
+                String message = String.fromCharCodes(Uint8List.fromList(payload.bytes!));
                 _handleIncomingMessage(message);
               }
             },
@@ -204,9 +206,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
     for (var target in _targets) {
       try {
+        // التصحيح: استخدام Uint8List.fromList
         await Nearby().sendBytesPayload(
           target['id'],
-          fullMessage.codeUnits,
+          Uint8List.fromList(fullMessage.codeUnits),
         );
       } catch (e) {
         debugPrint("فشل الإرسال إلى ${target['name']}: $e");
@@ -245,9 +248,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   Future<void> _relayMessage(String originalMessage) async {
     for (var target in _targets) {
       try {
+        // التصحيح: استخدام Uint8List.fromList
         await Nearby().sendBytesPayload(
           target['id'],
-          originalMessage.codeUnits,
+          Uint8List.fromList(originalMessage.codeUnits),
         );
       } catch (e) {
         debugPrint("فشل إعادة الإرسال إلى ${target['name']}: $e");
