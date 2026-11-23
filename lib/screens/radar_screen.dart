@@ -13,7 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-// ✅ تم تصحيح المسار للخروج من مجلد screens والبحث في lib
+// ✅ المسار الصحيح للخروج من مجلد screens
 import '../database_helper.dart';
 
 class CryptoHelper {
@@ -266,7 +266,9 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   Future<void> _ensureConnected(String endpointId) async {
     if (_linkedEndpoints.contains(endpointId)) return;
     try {
-      await Nearby().connect(
+      // ✅ تم استخدام requestConnection كما تتطلب المكتبة
+      await Nearby().requestConnection(
+        _userName, 
         endpointId,
         onConnectionInitiated: (id, info) async {
           await Nearby().acceptConnection(
