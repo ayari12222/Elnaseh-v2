@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:nearby_connections/nearby_connections.dart';
@@ -10,7 +11,43 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ============================================================
-// نموذج الرسالة — JSON + Base64 (بدون مكتبات إضافية)
+// مساعد التشفير AES-256-CBC
+// ============================================================
+class CryptoHelper {
+  /// يبني مفتاحًا 32 بايت من نص المستخدم (padding/truncate)
+  static enc.Key _keyFrom(String raw) {
+    final bytes = utf8.encode(raw.padRight(32, '0').substring(0, 32));
+    return enc.Key(Uint8List.fromList(bytes));
+  }
+
+  /// يُشفّر نصًا ويُعيد base64(iv + cipherText)
+  static String encrypt(String plain, String rawKey) {
+    final key = _keyFrom(rawKey);
+    final iv = enc.IV.fromSecureRandom(16);
+    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+    final encrypted = encrypter.encrypt(plain, iv: iv);
+    return base64Encode(iv.bytes + encrypted.bytes);
+  }
+
+  /// يفكّ تشفير base64(iv + cipherText)
+  static String? decrypt(String encoded, String rawKey) {
+    try {
+      final all = base64Decode(encoded);
+      if (all.length < 16) return null;
+      final iv = enc.IV(Uint8List.fromList(all.sublist(0, 16)));
+      final cipherText = enc.Encrypted(
+          Uint8List.fromList(all.sublist(16)));
+      final key = _keyFrom(rawKey);
+      final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+      return encrypter.decrypt(cipherText, iv: iv);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+// ============================================================
+// نموذج الرسالة — JSON + Base64 + AES
 // ============================================================
 class SosMessage {
   final String id;
@@ -18,7 +55,7 @@ class SosMessage {
   final int ttl;
   final String content;
   final int timestampMs;
-  final String type; // "SOS" أو "ACK"
+  final String type;
   final String? ackFor;
 
   SosMessage({
@@ -43,19 +80,26 @@ class SosMessage {
 
   factory SosMessage.fromJson(Map<String, dynamic> j) => SosMessage(
         id: j['id'] as String,
-        sender: j['s'] as String,
+        s: j['s'] as String,
         ttl: j['ttl'] as int,
-        content: j['c'] as String,
-        timestampMs: j['t'] as int,
-        type: j['ty'] as String,
-        ackFor: j['af'] as String?,
+        c: j['c'] as String,
+        t: j['t'] as int,
+        ty: j['ty'] as String,
+        af: j['af'] as String?,
       );
 
-  String encode() => base64Encode(utf8.encode(jsonEncode(toJson())));
+  /// يُشفَّر ثم base64
+  String encode(String key) {
+    final plain = jsonEncode(toJson());
+    return CryptoHelper.encrypt(plain, key);
+  }
 
-  static SosMessage? tryDecode(String s) {
+  /// يفك base64 ثم يفك تشفير
+  static SosMessage? tryDecode(String s, String key) {
     try {
-      final json = jsonDecode(utf8.decode(base64Decode(s)));
+      final plain = CryptoHelper.decrypt(s, key);
+      if (plain == null) return null;
+      final json = jsonDecode(plain);
       return SosMessage.fromJson(json as Map<String, dynamic>);
     } catch (_) {
       return null;
@@ -100,6 +144,9 @@ class _RadarScreenState extends State<RadarScreen>
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
 
+  /// مفتاح التشفير المشترك
+  String _sharedKey = "Elnaseh_Default_Key_2024_ChangeMe!";
+
   final Strategy strategy = Strategy.P2P_CLUSTER;
   final String serviceId = "com.elnaseh.app";
 
@@ -132,20 +179,21 @@ class _RadarScreenState extends State<RadarScreen>
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _loadUserName().then((_) => _initNearby());
+    _loadPrefs().then((_) => _initNearby());
   }
 
-  Future<void> _loadUserName() async {
+  Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
       _userName = prefs.getString('userName') ?? "مستخدم";
       _maxTtl = prefs.getInt('maxTtl') ?? 5;
+      _sharedKey = prefs.getString('sharedKey') ?? _sharedKey;
     });
   }
 
   // ------------------------------------------------------------
-  // إعداد Nearby + طلب الأذونات
+  // إعداد Nearby + الأذونات
   // ------------------------------------------------------------
   Future<void> _initNearby() async {
     final statuses = await [
@@ -177,7 +225,7 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   // ------------------------------------------------------------
-  // الإعلان عن الجهاز
+  // الإعلان
   // ------------------------------------------------------------
   Future<void> _startAdvertising() async {
     if (_isAdvertising) return;
@@ -191,7 +239,7 @@ class _RadarScreenState extends State<RadarScreen>
             onPayLoadRecieved: (endpointId, payload) {
               if (payload.type == PayloadType.BYTES && payload.bytes != null) {
                 final raw = utf8.decode(payload.bytes!, allowMalformed: true);
-                final msg = SosMessage.tryDecode(raw);
+                final msg = SosMessage.tryDecode(raw, _sharedKey);
                 if (msg != null) _handleIncomingMessage(msg, endpointId);
               }
             },
@@ -221,7 +269,7 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   // ------------------------------------------------------------
-  // دورة البحث: 30 ثانية بحث + 5 ثوانٍ توقف
+  // البحث: 30 ثانية + 5 توقف
   // ------------------------------------------------------------
   void _startDiscoveryWithTimer() {
     _startDiscovery();
@@ -234,7 +282,6 @@ class _RadarScreenState extends State<RadarScreen>
     if (!mounted) return;
     try {
       await Nearby().stopDiscovery().catchError((_) {});
-
       setState(() => _isScanning = true);
 
       final ok = await Nearby().startDiscovery(
@@ -248,20 +295,21 @@ class _RadarScreenState extends State<RadarScreen>
             if (_targets.length >= _maxTargets) {
               _targets.removeAt(0);
             }
+            // 📌 الزاوية تُحسب مرة واحدة فقط هنا (ثابتة)
+            final angle = (_targets.length * (2 * pi / 8)) - (pi / 2);
+            final jitter = Random().nextDouble() * 0.15;
             _targets.add({
               'id': id,
               'name': name.replaceFirst("Elnaseh_", ""),
-              'angle': 0.0,
+              'angle': angle + jitter,
               'radius': _targetRadius,
               'color': Colors.cyanAccent,
             });
-            _reassignAngles();
           });
         },
         onEndpointLost: (id) {
           setState(() {
             _targets.removeWhere((t) => t['id'] == id);
-            _reassignAngles();
           });
         },
         serviceId: serviceId,
@@ -284,15 +332,37 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   // ------------------------------------------------------------
-  // توزيع الزوايا — عادل + انحراف بسيط
+  // 🔔 تنبيه صوت + اهتزاز
   // ------------------------------------------------------------
-  void _reassignAngles() {
-    if (_targets.isEmpty) return;
-    final step = 2 * pi / _targets.length;
-    final rand = Random();
-    for (int i = 0; i < _targets.length; i++) {
-      _targets[i]['angle'] = (i * step) - (pi / 2) + rand.nextDouble() * 0.15;
+  void _alertSosReceived() {
+    HapticFeedback.heavyImpact();
+    SystemSound.play(SystemSoundType.alert);
+    Future.delayed(const Duration(milliseconds: 300), () {
+      HapticFeedback.heavyImpact();
+      SystemSound.play(SystemSoundType.alert);
+    });
+    Future.delayed(const Duration(milliseconds: 600), () {
+      HapticFeedback.heavyImpact();
+      SystemSound.play(SystemSoundType.alert);
+    });
+  }
+
+  // ------------------------------------------------------------
+  // 🔁 إرسال مع 3 محاولات
+  // ------------------------------------------------------------
+  Future<bool> _sendWithRetry(String endpointId, Uint8List data) async {
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await Nearby().sendBytesPayload(endpointId, data);
+        return true;
+      } catch (e) {
+        debugPrint("⚠️ محاولة $attempt فشلت لـ $endpointId: $e");
+        if (attempt < 3) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
     }
+    return false;
   }
 
   // ------------------------------------------------------------
@@ -349,7 +419,76 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   // ------------------------------------------------------------
-  // إرسال SOS مع انتظار ACK
+  // إعدادات المفتاح
+  // ------------------------------------------------------------
+  Future<void> _showKeySettings() async {
+    String newKey = _sharedKey;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '🔑 مفتاح التشفير المشترك',
+          style: TextStyle(color: Colors.cyanAccent),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'يجب أن يكون المفتاح نفسه على كل الأجهزة ليفك بعضها رسائل بعض.',
+              style: TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: TextEditingController(text: _sharedKey),
+              style: const TextStyle(color: Colors.white),
+              maxLength: 32,
+              decoration: const InputDecoration(
+                hintText: 'المفتاح (حتى 32 حرفًا)',
+                hintStyle: TextStyle(color: Colors.grey),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.cyanAccent),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.cyanAccent, width: 2),
+                ),
+              ),
+              onChanged: (v) => newKey = v,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            style:
+                ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
+            onPressed: () => Navigator.pop(context, newKey),
+            child: const Text('حفظ', style: TextStyle(color: Colors.black)),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.trim().isNotEmpty) {
+      setState(() => _sharedKey = result.trim());
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('sharedKey', _sharedKey);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ تم تحديث المفتاح'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+
+  // ------------------------------------------------------------
+  // إرسال SOS
   // ------------------------------------------------------------
   Future<void> _sendSosBroadcast() async {
     if (_targets.isEmpty) {
@@ -387,18 +526,13 @@ class _RadarScreenState extends State<RadarScreen>
     _activeSosId = messageId;
 
     final targetsCopy = List<Map<String, dynamic>>.from(_targets);
-    final encoded = sos.encode();
+    final encoded = sos.encode(_sharedKey);
+    final data = Uint8List.fromList(utf8.encode(encoded));
 
-    for (final target in targetsCopy) {
-      try {
-        await Nearby().sendBytesPayload(
-          target['id'],
-          Uint8List.fromList(utf8.encode(encoded)),
-        );
-      } catch (e) {
-        debugPrint("❌ فشل الإرسال إلى ${target['name']}: $e");
-      }
-    }
+    // إرسال مع 3 محاولات لكل جهاز (بالتوازي)
+    await Future.wait(
+      targetsCopy.map((t) => _sendWithRetry(t['id'], data)),
+    );
 
     final totalTargets = targetsCopy.length;
     await Future.delayed(_ackTimeout);
@@ -473,7 +607,7 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   // ------------------------------------------------------------
-  // استقبال رسالة (SOS أو ACK)
+  // معالجة الرسائل
   // ------------------------------------------------------------
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
     if (msg.isExpired()) {
@@ -484,7 +618,12 @@ class _RadarScreenState extends State<RadarScreen>
     if (_processedMessageIds.contains(msg.id)) return;
     _processedMessageIds.add(msg.id);
 
-    // رد ACK
+    // تنظيف دوري لمنع تراكم الذاكرة
+    if (_processedMessageIds.length > 1000) {
+      _processedMessageIds.clear();
+    }
+
+    // ACK
     if (msg.type == 'ACK') {
       if (_activeSosId != null && msg.ackFor == _activeSosId) {
         setState(() => _ackedNames.add(msg.sender));
@@ -492,12 +631,12 @@ class _RadarScreenState extends State<RadarScreen>
       return;
     }
 
-    // استلام SOS
+    // SOS
     _sendAck(msg.id, msg.sender, fromEndpointId);
-
     _messageLog.add(msg);
+
     if (mounted) {
-      HapticFeedback.heavyImpact();
+      _alertSosReceived();          // 🔔 صوت + اهتزاز
       _showSosReceived(msg.sender, msg.content);
     }
 
@@ -525,24 +664,16 @@ class _RadarScreenState extends State<RadarScreen>
       type: 'ACK',
       ackFor: forMessageId,
     );
-    final data = Uint8List.fromList(utf8.encode(ack.encode()));
-    try {
-      await Nearby().sendBytesPayload(toEndpointId, data);
-    } catch (e) {
-      debugPrint("❌ فشل إرسال ACK: $e");
-    }
+    final data = Uint8List.fromList(utf8.encode(ack.encode(_sharedKey)));
+    await _sendWithRetry(toEndpointId, data);
   }
 
   Future<void> _relayMessage(SosMessage msg) async {
-    final data = Uint8List.fromList(utf8.encode(msg.encode()));
+    final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
     final targetsCopy = List<Map<String, dynamic>>.from(_targets);
-    for (final target in targetsCopy) {
-      try {
-        await Nearby().sendBytesPayload(target['id'], data);
-      } catch (e) {
-        debugPrint("❌ فشل إعادة البث إلى ${target['name']}: $e");
-      }
-    }
+    await Future.wait(
+      targetsCopy.map((t) => _sendWithRetry(t['id'], data)),
+    );
   }
 
   void _showSosReceived(String senderName, String content) {
@@ -624,6 +755,9 @@ class _RadarScreenState extends State<RadarScreen>
     super.dispose();
   }
 
+  // ------------------------------------------------------------
+  // الواجهة
+  // ------------------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -642,6 +776,11 @@ class _RadarScreenState extends State<RadarScreen>
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.vpn_key, color: Colors.cyanAccent),
+            tooltip: 'مفتاح التشفير',
+            onPressed: _showKeySettings,
+          ),
           IconButton(
             icon: const Icon(Icons.history, color: Colors.cyanAccent),
             tooltip: 'السجل',
