@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -69,12 +70,7 @@ class SosMessage {
   });
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        's': sender,
-        'ttl': ttl,
-        'c': content,
-        't': timestampMs,
-        'ty': type,
+        'id': id, 's': sender, 'ttl': ttl, 'c': content, 't': timestampMs, 'ty': type,
         if (ackFor != null) 'af': ackFor,
         if (lat != null) 'lat': lat,
         if (lng != null) 'lng': lng,
@@ -147,15 +143,14 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   int _maxTtl = 5;
   static const Map<String, int> _ttlOptions = {
-    'قريب (3)': 3,
-    'متوازن (5)': 5,
-    'بعيد (10)': 10,
-    'طوارئ قصوى (15)': 15,
+    'قريب (3)': 3, 'متوازن (5)': 5, 'بعيد (10)': 10, 'طوارئ قصوى (15)': 15,
   };
 
   static const Duration _ackTimeout = Duration(seconds: 5);
   String? _activeSosId;
   final Set<String> _ackedNames = {};
+
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -177,12 +172,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   Future<void> _initNearby() async {
     final statuses = await [
-      Permission.location,
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothAdvertise,
-      Permission.bluetoothConnect,
-      Permission.nearbyWifiDevices,
+      Permission.location, Permission.bluetooth, Permission.bluetoothScan,
+      Permission.bluetoothAdvertise, Permission.bluetoothConnect, Permission.nearbyWifiDevices,
     ].request();
 
     if ((statuses[Permission.location]?.isGranted ?? false) &&
@@ -202,8 +193,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     if (_isAdvertising) return;
     try {
       await Nearby().startAdvertising(
-        _advertiseName,
-        strategy,
+        _advertiseName, strategy,
         onConnectionInitiated: (id, info) async {
           await Nearby().acceptConnection(
             id,
@@ -238,8 +228,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       await Nearby().stopDiscovery().catchError((_) {});
       setState(() => _isScanning = true);
       await Nearby().startDiscovery(
-        _userName,
-        strategy,
+        _userName, strategy,
         onEndpointFound: (id, name, svcId) {
           if (svcId != serviceId) return;
           if (_targets.any((t) => t['id'] == id)) return;
@@ -267,21 +256,21 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
-  // ✅ دالة التنبيه المحسنة (اهتزاز وصوت)
-  void _alertSosReceived() {
+  // ✅ دالة التنبيه (تشغيل الصوت الحقيقي من الجذر + الاهتزاز)
+  Future<void> _alertSosReceived() async {
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
-    SystemSound.play(SystemSoundType.alert);
-    SystemSound.play(SystemSoundType.click);
 
-    Future.delayed(const Duration(milliseconds: 400), () {
-      HapticFeedback.vibrate();
+    try {
+      // تشغيل الملف الصوتي من الجذر الرئيسي للمشروع
+      await _audioPlayer.play(AssetSource('war-alarm-sound-long.mp3'));
+    } catch (e) {
+      debugPrint("❌ خطأ في تشغيل الصوت: $e");
       SystemSound.play(SystemSoundType.alert);
-    });
-    Future.delayed(const Duration(milliseconds: 800), () {
-      HapticFeedback.vibrate();
-      SystemSound.play(SystemSoundType.alert);
-    });
+    }
+
+    Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
   }
 
   Future<bool> _sendWithRetry(String endpointId, Uint8List data) async {
@@ -444,13 +433,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   Future<void> _testIncomingSos() async {
     final msg = SosMessage(
       id: 'test_${DateTime.now().millisecondsSinceEpoch}',
-      sender: "جهاز تجريبي",
-      ttl: 1,
+      sender: "جهاز تجريبي", ttl: 1,
       content: "هذه رسالة اختبار! تأكد من أن الصوت والاهتزاز والخريطة تعمل.",
       timestampMs: DateTime.now().millisecondsSinceEpoch,
-      type: 'SOS',
-      lat: 24.7136,
-      lng: 46.6753,
+      type: 'SOS', lat: 24.7136, lng: 46.6753,
     );
     _handleIncomingMessage(msg, "dummy_endpoint");
   }
@@ -531,6 +517,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    _audioPlayer.dispose();
     _discoveryTimer?.cancel(); _stopDiscoveryTimer?.cancel();
     Nearby().stopAdvertising(); Nearby().stopDiscovery(); Nearby().stopAllEndpoints();
     _sweepController.dispose(); _pulseController.dispose();
@@ -550,24 +537,13 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             ShaderMask(
               shaderCallback: (bounds) => const LinearGradient(
                 colors: [Colors.cyanAccent, Colors.white, Colors.cyanAccent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+                begin: Alignment.topLeft, end: Alignment.bottomRight,
               ).createShader(bounds),
-              child: const Text(
-                'الناصح',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                ),
-              ),
+              child: const Text('الناصح', style: TextStyle(color: Colors.white, fontSize: 26, fontWeight: FontWeight.w900, letterSpacing: 2)),
             ),
           ],
         ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
+        centerTitle: true, backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
           IconButton(icon: const Icon(Icons.auto_awesome, color: Colors.amberAccent), tooltip: 'اختبار', onPressed: _testIncomingSos),
@@ -628,23 +604,13 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
               ),
               
               Positioned(
-                bottom: 120,
-                left: 0,
-                right: 0,
+                bottom: 120, left: 0, right: 0,
                 child: Center(
                   child: Text(
                     'الناصح يقدم الحل',
                     style: TextStyle(
-                      color: Colors.cyanAccent.withOpacity(0.7),
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 1.5,
-                      shadows: [
-                        Shadow(
-                          color: Colors.cyanAccent.withOpacity(0.5),
-                          blurRadius: 10,
-                        ),
-                      ],
+                      color: Colors.cyanAccent.withOpacity(0.7), fontSize: 16, fontWeight: FontWeight.bold, letterSpacing: 1.5,
+                      shadows: [Shadow(color: Colors.cyanAccent.withOpacity(0.5), blurRadius: 10)],
                     ),
                   ),
                 ),
