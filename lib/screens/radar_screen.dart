@@ -529,7 +529,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
     if (msg.type == 'SOS') {
       _sendAck(msg.id, msg.sender, fromEndpointId);
@@ -719,7 +718,8 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            ..._messageLog.reversed.map<SosMessage>((m) {
+            // 🔴 تم إصلاح هذا الجزء بإضافة النوع الصريح SosMessage
+            ..._messageLog.reversed.map<SosMessage>((SosMessage m) {
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text(
@@ -1038,46 +1038,4 @@ class _RadarScreenState extends State<RadarScreen>
                   child: FloatingActionButton.extended(
                     onPressed: _isSosSending ? null : _sendSosBroadcast,
                     backgroundColor: _isSosSending ? Colors.grey : Colors.redAccent,
-                    icon: _isSosSending
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-                          )
-                        : const Icon(Icons.warning, color: Colors.white),
-                    label: Text(
-                      _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class RadarGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.15)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final radius = size.width / 2;
-
-    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), paint);
-    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), paint);
-    canvas.drawLine(Offset(0, 0), Offset(size.width, size.height), paint);
-    canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), paint);
-    canvas.drawCircle(center, radius, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
+                    icon: _isSosS
