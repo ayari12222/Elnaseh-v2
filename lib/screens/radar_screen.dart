@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:math';
-import 'dart:typed_data'; // <-- تمت إضافة هذا السطر
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -22,7 +22,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   bool _isScanning = false;
   bool _isAdvertising = false;
   bool _isSosSending = false;
-  
+
   final Set<String> _receivedMessageIds = {};
 
   String _userName = "مستخدم";
@@ -31,9 +31,19 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   final Strategy strategy = Strategy.P2P_CLUSTER;
   final String serviceId = "com.elnaseh.app";
 
-  // ✅ ثوابت التوزيع البصري (المرحلة 1)
+  // ✅ المرحلة 1: ثوابت التوزيع البصري
   static const double _targetRadius = 180.0;
   static const double _centerOffset = 250.0;
+
+  // ✅ المرحلة 2.5: TTL قابل للتعديل
+  int _maxTtl = 5;
+
+  static const Map<String, int> _ttlOptions = {
+    'قريب (3)': 3,
+    'متوازن (5)': 5,
+    'بعيد (10)': 10,
+    'طوارئ قصوى (15)': 15,
+  };
 
   @override
   void initState() {
@@ -55,6 +65,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userName = prefs.getString('userName') ?? "مستخدم";
+      _maxTtl = prefs.getInt('maxTtl') ?? 5;
     });
   }
 
@@ -88,8 +99,9 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             id,
             onPayLoadRecieved: (endpointId, payload) {
               if (payload.type == PayloadType.BYTES) {
-                // التصحيح: استخدام Uint8List
-                String message = String.fromCharCodes(Uint8List.fromList(payload.bytes!));
+                String message = String.fromCharCodes(
+                  Uint8List.fromList(payload.bytes!),
+                );
                 _handleIncomingMessage(message);
               }
             },
@@ -121,7 +133,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
           if (!_targets.any((t) => t['id'] == id)) {
             setState(() {
-              // ✅ زاوية ثابتة لكل جهاز حسب ترتيب اكتشافه (المرحلة 1)
+              // ✅ المرحلة 1: زاوية ثابتة
               final double angle =
                   (_targets.length * (2 * pi / 8)) - (pi / 2);
 
@@ -152,10 +164,61 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
-  // ✅ إعادة توزيع الزوايا بعد أي حذف (المرحلة 1)
+  // ✅ المرحلة 1: إعادة توزيع الزوايا
   void _reassignAngles() {
     for (int i = 0; i < _targets.length; i++) {
       _targets[i]['angle'] = (i * (2 * pi / 8)) - (pi / 2);
+    }
+  }
+
+  // ✅ المرحلة 2.5: اختيار مدى الانتشار
+  Future<void> _showTtlSelector() async {
+    final selected = await showDialog<int>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          'مدى انتشار الاستغاثة',
+          style: TextStyle(color: Colors.cyanAccent),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _ttlOptions.entries.map((entry) {
+            final isSelected = entry.value == _maxTtl;
+            return ListTile(
+              leading: Icon(
+                isSelected
+                    ? Icons.radio_button_checked
+                    : Icons.radio_button_unchecked,
+                color: isSelected ? Colors.cyanAccent : Colors.grey,
+              ),
+              title: Text(
+                entry.key,
+                style: TextStyle(
+                  color: isSelected ? Colors.cyanAccent : Colors.white,
+                ),
+              ),
+              subtitle: Text(
+                'حتى ${entry.value} قفزة عبر الأجهزة',
+                style: const TextStyle(color: Colors.grey, fontSize: 11),
+              ),
+              onTap: () => Navigator.pop(context, entry.value),
+            );
+          }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
+          ),
+        ],
+      ),
+    );
+
+    if (selected != null) {
+      setState(() => _maxTtl = selected);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('maxTtl', selected);
     }
   }
 
@@ -201,9 +264,11 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
               child: const Text('إلغاء', style: TextStyle(color: Colors.grey)),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+              style:
+                  ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
               onPressed: () => Navigator.pop(context, message),
-              child: const Text('إرسال', style: TextStyle(color: Colors.white)),
+              child:
+                  const Text('إرسال', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -218,12 +283,12 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     HapticFeedback.vibrate();
 
     String messageId = DateTime.now().millisecondsSinceEpoch.toString();
-    String fullMessage = "🚨 SOS|$messageId|$_userName|$customMessage";
+    // ✅ المرحلة 2: TTL مضمّن في الرسالة
+    String fullMessage = "🚨 SOS|$messageId|$_userName|$_maxTtl|$customMessage";
     _receivedMessageIds.add(messageId);
 
     for (var target in _targets) {
       try {
-        // التصحيح: استخدام Uint8List.fromList
         await Nearby().sendBytesPayload(
           target['id'],
           Uint8List.fromList(fullMessage.codeUnits),
@@ -236,8 +301,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     setState(() => _isSosSending = false);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('تم إرسال رسالتك لجميع الأجهزة القريبة'),
+        SnackBar(
+          content: Text('تم إرسال الاستغاثة بمدى $_maxTtl قفزات'),
           backgroundColor: Colors.green,
         ),
       );
@@ -246,26 +311,30 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   void _handleIncomingMessage(String message) {
     List<String> parts = message.split('|');
-    if (parts.length < 4) return;
+    // ✅ المرحلة 2: 5 أجزاء
+    if (parts.length < 5) return;
     if (parts[0] != "🚨 SOS") return;
 
     String messageId = parts[1];
     String senderName = parts[2];
-    String content = parts[3];
+    int ttl = int.tryParse(parts[3]) ?? 0;
+    String content = parts[4];
 
     if (_receivedMessageIds.contains(messageId)) return;
-
     _receivedMessageIds.add(messageId);
 
     _showSosReceived(senderName, content);
 
-    _relayMessage(message);
+    // ✅ المرحلة 2: إعادة البث فقط إذا بقي TTL
+    if (ttl > 1) {
+      String relayed = "🚨 SOS|$messageId|$senderName|${ttl - 1}|$content";
+      _relayMessage(relayed);
+    }
   }
 
   Future<void> _relayMessage(String originalMessage) async {
     for (var target in _targets) {
       try {
-        // التصحيح: استخدام Uint8List.fromList
         await Nearby().sendBytesPayload(
           target['id'],
           Uint8List.fromList(originalMessage.codeUnits),
@@ -289,7 +358,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('حسناً', style: TextStyle(color: Colors.cyanAccent)),
+            child:
+                const Text('حسناً', style: TextStyle(color: Colors.cyanAccent)),
           ),
         ],
       ),
@@ -324,8 +394,17 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
+          // ✅ المرحلة 2.5: زر اختيار المدى
           IconButton(
-            icon: Icon(_isScanning ? Icons.stop : Icons.search, color: Colors.cyanAccent),
+            icon: const Icon(Icons.tune, color: Colors.cyanAccent),
+            tooltip: 'مدى الانتشار: $_maxTtl قفزات',
+            onPressed: _showTtlSelector,
+          ),
+          IconButton(
+            icon: Icon(
+              _isScanning ? Icons.stop : Icons.search,
+              color: Colors.cyanAccent,
+            ),
             onPressed: () {
               if (_isScanning) {
                 Nearby().stopDiscovery();
@@ -401,7 +480,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                       );
                     },
                   ),
-                  // ✅ الأهداف — استخدام الزاوية والمسافة الثابتتين (المرحلة 1)
+                  // ✅ المرحلة 1: الأهداف
                   ..._targets.map((t) {
                     final double radius = t['radius'] as double;
                     final double angle = t['angle'] as double;
@@ -419,12 +498,16 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                               shape: BoxShape.circle,
                               boxShadow: [
                                 BoxShadow(
-                                  color: (t['color'] as Color).withOpacity(0.8),
+                                  color:
+                                      (t['color'] as Color).withOpacity(0.8),
                                   blurRadius: 15,
                                   spreadRadius: 2,
                                 ),
                               ],
-                              border: Border.all(color: Colors.white, width: 1.5),
+                              border: Border.all(
+                                color: Colors.white,
+                                width: 1.5,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -469,13 +552,24 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             child: Center(
               child: FloatingActionButton.extended(
                 onPressed: _isSosSending ? null : _sendSosBroadcast,
-                backgroundColor: _isSosSending ? Colors.grey : Colors.redAccent,
-                icon: _isSosSending 
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                backgroundColor:
+                    _isSosSending ? Colors.grey : Colors.redAccent,
+                icon: _isSosSending
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
                     : const Icon(Icons.warning, color: Colors.white),
                 label: Text(
                   _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
