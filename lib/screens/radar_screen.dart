@@ -414,7 +414,16 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
               icon: const Icon(Icons.map, color: Colors.greenAccent), label: const Text('عرض على الخريطة', style: TextStyle(color: Colors.greenAccent)),
               onPressed: () async {
                 final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=${msg.lat},${msg.lng}');
-                if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
+                try {
+                  // إجبار الفتح في تطبيق خارجي
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('فشل فتح الخريطة: $e'), backgroundColor: Colors.red),
+                    );
+                  }
+                }
               },
             ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً', style: TextStyle(color: Colors.cyanAccent))),
@@ -609,7 +618,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                 ),
               ),
               
-              // ✅ الشعار الجديد
               Positioned(
                 bottom: 120,
                 left: 0,
