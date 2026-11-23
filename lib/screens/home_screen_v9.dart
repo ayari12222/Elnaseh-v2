@@ -5,7 +5,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'radar_screen.dart'; // <-- تمت إضافة هذا السطر
+import 'radar_screen.dart'; // استيراد شاشة الرادار
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -22,7 +22,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   
   bool _isSosActive = false;
   
-  // اللاعب معرف هنا مرة واحدة فقط (Global)
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final List<Map<String, dynamic>> _allPosts = [
@@ -197,7 +196,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
-              // <-- تعديل زر الرادار لفتح الشاشة
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) => const RadarScreen()),
@@ -233,15 +231,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
         ],
       ),
-      body: PageView.builder(
-        controller: _pageController,
-        scrollDirection: Axis.vertical,
-        itemCount: _filteredPosts.length,
-        itemBuilder: (context, index) {
-          final post = _filteredPosts[index];
-          return _buildPost(post);
-        },
-      ),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: (index) => setState(() => _currentIndex = index),
@@ -254,15 +243,64 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           BottomNavigationBarItem(icon: Icon(Icons.devices), label: 'الأجهزة'),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _toggleSos,
-        backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F),
-        child: Text(
-          _isSosActive ? 'إيقاف' : 'SOS',
-          style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-        ),
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            scrollDirection: Axis.vertical,
+            itemCount: _filteredPosts.length,
+            itemBuilder: (context, index) {
+              final post = _filteredPosts[index];
+              return _buildPost(post);
+            },
+          ),
+          Positioned(
+            left: 20,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: FloatingActionButton(
+                onPressed: _toggleSos,
+                backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F),
+                elevation: 10,
+                child: Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: _isSosActive
+                          ? [Colors.greenAccent, Colors.green]
+                          : [Colors.redAccent, const Color(0xFFB71C1C)],
+                      center: Alignment.center,
+                      radius: 0.8,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: _isSosActive ? Colors.green.withOpacity(0.6) : Colors.red.withOpacity(0.6),
+                        blurRadius: 20,
+                        spreadRadius: 5,
+                      ),
+                    ],
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _isSosActive ? 'إيقاف' : 'SOS',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        fontSize: 20,
+                        letterSpacing: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
     );
   }
 
