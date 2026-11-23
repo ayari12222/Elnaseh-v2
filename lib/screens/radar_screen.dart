@@ -4,183 +4,16 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:nearby_connections/nearby_connections.dart';
-import 'package:path/path.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-class CryptoHelper {
-  static enc.Key _keyFrom(String raw) {
-    final bytes = utf8.encode(raw.padRight(32, '0').substring(0, 32));
-    return enc.Key(Uint8List.fromList(bytes));
-  }
-
-  static String encrypt(String plain, String rawKey) {
-    final key = _keyFrom(rawKey);
-    final iv = enc.IV.fromSecureRandom(16);
-    final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
-    return base64Encode(iv.bytes + encrypter.encrypt(plain, iv: iv).bytes);
-  }
-
-  static String? decrypt(String encoded, String rawKey) {
-    try {
-      final all = base64Decode(encoded);
-      if (all.length < 16) return null;
-      final iv = enc.IV(Uint8List.fromList(all.sublist(0, 16)));
-      final cipherText = enc.Encrypted(Uint8List.fromList(all.sublist(16)));
-      final encrypter =
-          enc.Encrypter(enc.AES(_keyFrom(rawKey), mode: enc.AESMode.cbc));
-      return encrypter.decrypt(cipherText, iv: iv);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  static String generateRandomKey() {
-    final rnd = Random.secure();
-    final bytes = List<int>.generate(32, (_) => rnd.nextInt(256));
-    return base64Url.encode(bytes).substring(0, 32);
-  }
-}
-
-class SosMessage {
-  final String id;
-  final String sender;
-  final int ttl;
-  final String content;
-  final int timestampMs;
-  final String type;
-  final String? ackFor;
-  final double? lat;
-  final double? lng;
-
-  SosMessage({
-    required this.id,
-    required this.sender,
-    required this.ttl,
-    required this.content,
-    required this.timestampMs,
-    required this.type,
-    this.ackFor,
-    this.lat,
-    this.lng,
-  });
-
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        's': sender,
-        'ttl': ttl,
-        'c': content,
-        't': timestampMs,
-        'ty': type,
-        if (ackFor != null) 'af': ackFor,
-        if (lat != null) 'lat': lat,
-        if (lng != null) 'lng': lng,
-      };
-
-  factory SosMessage.fromJson(Map<String, dynamic> j) => SosMessage(
-        id: j['id'] as String,
-        sender: j['s'] as String,
-        ttl: j['ttl'] as int,
-        content: j['c'] as String,
-        timestampMs: j['t'] as int,
-        type: j['ty'] as String,
-        ackFor: j['af'] as String?,
-        lat: j['lat'] != null ? (j['lat'] as num).toDouble() : null,
-        lng: j['lng'] != null ? (j['lng'] as num).toDouble() : null,
-      );
-
-  String encode(String key) => CryptoHelper.encrypt(jsonEncode(toJson()), key);
-
-  static SosMessage? tryDecode(String s, String key) {
-    try {
-      final plain = CryptoHelper.decrypt(s, key);
-      if (plain == null) return null;
-      return SosMessage.fromJson(jsonDecode(plain) as Map<String, dynamic>);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  bool isExpired({Duration maxAge = const Duration(minutes: 30)}) {
-    return DateTime.now()
-            .difference(DateTime.fromMillisecondsSinceEpoch(timestampMs)) >
-        maxAge;
-  }
-}
-
-class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._internal();
-  static Database? _db;
-  DatabaseHelper._internal();
-
-  Future<Database> get database async {
-    _db ??= await _initDb();
-    return _db!;
-  }
-
-  Future<Database> _initDb() async {
-    final path = join(await getDatabasesPath(), 'elnaseh.db');
-    return openDatabase(
-      path,
-      version: 1,
-      onCreate: (db, version) async {
-        await db.execute('''
-          CREATE TABLE messages (
-            id TEXT PRIMARY KEY,
-            sender TEXT NOT NULL,
-            content TEXT NOT NULL,
-            ttl INTEGER NOT NULL,
-            lat REAL,
-            lng REAL,
-            timestampMs INTEGER NOT NULL,
-            type TEXT NOT NULL
-          )
-        ''');
-        await db.execute('''
-          CREATE TABLE delivery (
-            messageId TEXT NOT NULL,
-            endpointId TEXT NOT NULL,
-            PRIMARY KEY (messageId, endpointId)
-          )
-        ''');
-      },
-    );
-  }
-
-  Future<void> saveMessage(Map<String, dynamic> message) async {
-    final db = await database;
-    await db.insert('messages', message,
-        conflictAlgorithm: ConflictAlgorithm.ignore);
-  }
-
-  Future<void> markAsSent(String messageId, String endpointId) async {
-    final db = await database;
-    await db.insert(
-      'delivery',
-      {'messageId': messageId, 'endpointId': endpointId},
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
-  }
-
-  Future<List<Map<String, dynamic>>> getUnsentMessages(
-      String endpointId) async {
-    final db = await database;
-    return db.rawQuery('''
-      SELECT m.* FROM messages m
-      WHERE m.id NOT IN (
-        SELECT messageId FROM delivery WHERE endpointId = ?
-      )
-      ORDER BY m.timestampMs ASC
-    ''', [endpointId]);
-  }
-}
+import '../crypto_helper.dart';
+import '../database_helper.dart';
 
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
@@ -728,6 +561,7 @@ class _RadarScreenState extends State<RadarScreen>
     await Future.wait(others.map((t) => _sendWithRetry(t['id'], data)));
   }
 
+  
   Future<void> _alertSosReceived() async {
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
@@ -1072,4 +906,179 @@ class _RadarScreenState extends State<RadarScreen>
                         (i) => AnimatedBuilder(
                           animation: _pulseController,
                           builder: (context, child) => Container(
-                            width
+                            width: (size / 4) * (i + 1),
+                            height: (size / 4) * (i + 1),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Colors.cyanAccent.withOpacity(
+                                  0.1 + (_pulseController.value * 0.2),
+                                ),
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      CustomPaint(
+                        size: Size(size, size),
+                        painter: RadarGridPainter(),
+                      ),
+                      AnimatedBuilder(
+                        animation: _sweepController,
+                        builder: (context, child) => Container(
+                          width: size * 0.5,
+                          height: size * 0.5,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: SweepGradient(
+                              colors: [
+                                Colors.cyanAccent.withOpacity(0.0),
+                                Colors.cyanAccent.withOpacity(0.4),
+                                Colors.cyanAccent.withOpacity(0.0),
+                              ],
+                              stops: const [0.0, 0.5, 1.0],
+                              transform: GradientRotation(
+                                _sweepController.value * 2 * pi,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      ..._targets.map((t) {
+                        final double a = t['angle'] as double;
+                        return Positioned(
+                          left: center + radius * cos(a) - 12,
+                          top: center + radius * sin(a) - 12,
+                          child: Column(
+                            children: [
+                              Container(
+                                width: 24,
+                                height: 24,
+                                decoration: BoxDecoration(
+                                  color: t['color'] as Color,
+                                  shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: (t['color'] as Color)
+                                          .withOpacity(0.8),
+                                      blurRadius: 15,
+                                      spreadRadius: 2,
+                                    ),
+                                  ],
+                                  border: Border.all(
+                                      color: Colors.white, width: 1.5),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                t['name'],
+                                style: TextStyle(
+                                  color: t['color'] as Color,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      Container(
+                        width: 16,
+                        height: 16,
+                        decoration: const BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.cyanAccent,
+                              blurRadius: 20,
+                              spreadRadius: 5,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 120,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Text(
+                    'الناصح يقدم الحل',
+                    style: TextStyle(
+                      color: Colors.cyanAccent.withOpacity(0.7),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                      shadows: [
+                        Shadow(
+                          color: Colors.cyanAccent.withOpacity(0.5),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 30,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: FloatingActionButton.extended(
+                    onPressed: _isSosSending ? null : _sendSosBroadcast,
+                    backgroundColor:
+                        _isSosSending ? Colors.grey : Colors.redAccent,
+                    icon: _isSosSending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.warning, color: Colors.white),
+                    label: Text(
+                      _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class RadarGridPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.cyanAccent.withOpacity(0.15)
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), paint);
+    canvas.drawLine(Offset(0, center.dy), Offset(size.width, center.dy), paint);
+    canvas.drawLine(Offset(0, 0), Offset(size.width, size.height), paint);
+    canvas.drawLine(Offset(size.width, 0), Offset(0, size.height), paint);
+    canvas.drawCircle(center, radius, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
