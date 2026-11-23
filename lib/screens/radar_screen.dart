@@ -13,7 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 // ============================================================
-// مساعد التشفير AES-256-CBC
+// مساعد التشفير
 // ============================================================
 class CryptoHelper {
   static enc.Key _keyFrom(String raw) {
@@ -25,8 +25,7 @@ class CryptoHelper {
     final key = _keyFrom(rawKey);
     final iv = enc.IV.fromSecureRandom(16);
     final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
-    final encrypted = encrypter.encrypt(plain, iv: iv);
-    return base64Encode(iv.bytes + encrypted.bytes);
+    return base64Encode(iv.bytes + encrypter.encrypt(plain, iv: iv).bytes);
   }
 
   static String? decrypt(String encoded, String rawKey) {
@@ -35,8 +34,7 @@ class CryptoHelper {
       if (all.length < 16) return null;
       final iv = enc.IV(Uint8List.fromList(all.sublist(0, 16)));
       final cipherText = enc.Encrypted(Uint8List.fromList(all.sublist(16)));
-      final key = _keyFrom(rawKey);
-      final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
+      final encrypter = enc.Encrypter(enc.AES(_keyFrom(rawKey), mode: enc.AESMode.cbc));
       return encrypter.decrypt(cipherText, iv: iv);
     } catch (_) {
       return null;
@@ -84,11 +82,11 @@ class SosMessage {
 
   factory SosMessage.fromJson(Map<String, dynamic> j) => SosMessage(
         id: j['id'] as String,
-        sender: j['s'] as String, // ✅ تم التصحيح هنا
+        sender: j['s'] as String,
         ttl: j['ttl'] as int,
-        content: j['c'] as String, // ✅ وتم التصحيح هنا
-        timestampMs: j['t'] as int, // ✅ وتم التصحيح هنا
-        type: j['ty'] as String, // ✅ وتم التصحيح هنا
+        content: j['c'] as String,
+        timestampMs: j['t'] as int,
+        type: j['ty'] as String,
         ackFor: j['af'] as String?,
         lat: j['lat'] != null ? (j['lat'] as num).toDouble() : null,
         lng: j['lng'] != null ? (j['lng'] as num).toDouble() : null,
@@ -107,9 +105,7 @@ class SosMessage {
   }
 
   bool isExpired({Duration maxAge = const Duration(minutes: 30)}) {
-    final age = DateTime.now()
-        .difference(DateTime.fromMillisecondsSinceEpoch(timestampMs));
-    return age > maxAge;
+    return DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(timestampMs)) > maxAge;
   }
 }
 
@@ -138,11 +134,10 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   Timer? _discoveryTimer;
   Timer? _stopDiscoveryTimer;
 
-  final Map<String, bool> _connectedEndpoints = {};
-
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
-  String _sharedKey = "Elnaseh_Default_Key_2024_ChangeMe!";
+  
+  String _sharedKey = "Elnaseh_Key_1"; 
 
   final Strategy strategy = Strategy.P2P_CLUSTER;
   final String serviceId = "com.elnaseh.app";
@@ -206,7 +201,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   Future<void> _startAdvertising() async {
     if (_isAdvertising) return;
     try {
-      final ok = await Nearby().startAdvertising(
+      await Nearby().startAdvertising(
         _advertiseName,
         strategy,
         onConnectionInitiated: (id, info) async {
@@ -221,16 +216,12 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             },
             onPayloadTransferUpdate: (endpointId, update) {},
           );
-          _connectedEndpoints[id] = true;
         },
-        onConnectionResult: (id, status) {
-          if (status == Status.CONNECTED) _connectedEndpoints[id] = true;
-          else _connectedEndpoints.remove(id);
-        },
-        onDisconnected: (id) => _connectedEndpoints.remove(id),
+        onConnectionResult: (id, status) {},
+        onDisconnected: (id) {},
         serviceId: serviceId,
       );
-      if (ok) setState(() => _isAdvertising = true);
+      setState(() => _isAdvertising = true);
     } catch (e) {
       debugPrint("❌ فشل الإعلان: $e");
     }
@@ -246,7 +237,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     try {
       await Nearby().stopDiscovery().catchError((_) {});
       setState(() => _isScanning = true);
-      final ok = await Nearby().startDiscovery(
+      await Nearby().startDiscovery(
         _userName,
         strategy,
         onEndpointFound: (id, name, svcId) {
@@ -256,21 +247,16 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             if (_targets.length >= _maxTargets) _targets.removeAt(0);
             final angle = (_targets.length * (2 * pi / 8)) - (pi / 2);
             _targets.add({
-              'id': id,
-              'name': name.replaceFirst("Elnaseh_", ""),
+              'id': id, 'name': name.replaceFirst("Elnaseh_", ""),
               'angle': angle + Random().nextDouble() * 0.15,
-              'radius': _targetRadius,
-              'color': Colors.cyanAccent,
+              'radius': _targetRadius, 'color': Colors.cyanAccent,
             });
           });
         },
         onEndpointLost: (id) => setState(() => _targets.removeWhere((t) => t['id'] == id)),
         serviceId: serviceId,
       );
-      if (!ok) {
-        if (mounted) setState(() => _isScanning = false);
-        return;
-      }
+      
       _stopDiscoveryTimer?.cancel();
       _stopDiscoveryTimer = Timer(const Duration(seconds: 30), () async {
         await Nearby().stopDiscovery().catchError((_) {});
@@ -300,38 +286,13 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     return false;
   }
 
-  // 📍 جلب الموقع
   Future<Position?> _getCurrentLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('⚠️ خدمة الموقع (GPS) مغلقة في هاتفك'), backgroundColor: Colors.orange),
-        );
-      }
-      return null;
-    }
-
+    if (!await Geolocator.isLocationServiceEnabled()) return null;
     LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) return null;
-    }
-    
-    if (permission == LocationPermission.deniedForever) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ تم رفض إذن الموقع نهائياً'), backgroundColor: Colors.red),
-        );
-      }
-      return null;
-    }
-
+    if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+    if (permission == LocationPermission.denied || permission == LocationPermission.deniedForever) return null;
     try {
-      return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 5),
-      );
+      return await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 5));
     } catch (e) {
       return await Geolocator.getLastKnownPosition();
     }
@@ -339,7 +300,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   Future<void> _sendSosBroadcast() async {
     if (_targets.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد أجهزة قريبة'), backgroundColor: Colors.orange));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('لا توجد أجهزة قريبة (جرب زر الاختبار ✨)'), backgroundColor: Colors.orange));
       return;
     }
 
@@ -350,51 +311,32 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     HapticFeedback.heavyImpact();
 
     Position? pos = await _getCurrentLocation();
-
     final now = DateTime.now().millisecondsSinceEpoch;
     final messageId = '${now}_${Random().nextInt(9999)}';
 
     final sos = SosMessage(
-      id: messageId,
-      sender: _userName,
-      ttl: _maxTtl,
-      content: customMessage.trim(),
-      timestampMs: now,
-      type: 'SOS',
-      lat: pos?.latitude,
-      lng: pos?.longitude,
+      id: messageId, sender: _userName, ttl: _maxTtl,
+      content: customMessage.trim(), timestampMs: now, type: 'SOS',
+      lat: pos?.latitude, lng: pos?.longitude,
     );
 
     _processedMessageIds.add(messageId);
     _activeSosId = messageId;
 
     final targetsCopy = List<Map<String, dynamic>>.from(_targets);
-    final encoded = sos.encode(_sharedKey);
-    final data = Uint8List.fromList(utf8.encode(encoded));
+    final data = Uint8List.fromList(utf8.encode(sos.encode(_sharedKey)));
 
     await Future.wait(targetsCopy.map((t) => _sendWithRetry(t['id'], data)));
-
-    final totalTargets = targetsCopy.length;
     await Future.delayed(_ackTimeout);
 
     if (!mounted) return;
     setState(() => _isSosSending = false);
 
     final ackedCount = _ackedNames.length;
-    String feedback;
-    Color color;
-    if (ackedCount == 0) {
-      feedback = '⚠️ لم يصل التأكيد — قد لا تكون الاستغاثة وصلت';
-      color = Colors.red;
-    } else if (ackedCount < totalTargets) {
-      feedback = '✅ وصل التأكيد من $ackedCount من أصل $totalTargets جهاز';
-      color = Colors.orange;
-    } else {
-      feedback = '✅ وصلت الاستغاثة لجميع الأجهزة ($ackedCount)';
-      color = Colors.green;
-    }
-
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(feedback), backgroundColor: color));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(ackedCount == 0 ? '⚠️ لم يصل التأكيد' : '✅ وصل التأكيد من $ackedCount أجهزة'),
+      backgroundColor: ackedCount == 0 ? Colors.red : Colors.green,
+    ));
     _activeSosId = null;
   }
 
@@ -406,34 +348,21 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text('إرسال نداء استغاثة', style: TextStyle(color: Colors.cyanAccent)),
         content: TextField(
-          autofocus: true,
-          style: const TextStyle(color: Colors.white),
-          maxLength: 200,
-          decoration: const InputDecoration(
-            hintText: 'اكتب رسالتك هنا (سيتم إرفاق موقعك)...',
-            hintStyle: TextStyle(color: Colors.grey),
-            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.cyanAccent)),
-            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.cyanAccent, width: 2)),
-          ),
+          autofocus: true, style: const TextStyle(color: Colors.white), maxLength: 200,
+          decoration: const InputDecoration(hintText: 'اكتب رسالتك هنا...', hintStyle: TextStyle(color: Colors.grey)),
           onChanged: (v) => message = v,
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, null), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.pop(context, message),
-            child: const Text('إرسال', style: TextStyle(color: Colors.white)),
-          ),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent), onPressed: () => Navigator.pop(context, message), child: const Text('إرسال', style: TextStyle(color: Colors.white))),
         ],
       ),
     );
   }
 
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
-    if (msg.isExpired()) return;
-    if (_processedMessageIds.contains(msg.id)) return;
+    if (msg.isExpired() || _processedMessageIds.contains(msg.id)) return;
     _processedMessageIds.add(msg.id);
-
     if (_processedMessageIds.length > 1000) _processedMessageIds.clear();
 
     if (msg.type == 'ACK') {
@@ -450,26 +379,19 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
 
     if (msg.ttl > 1) {
-      final relay = SosMessage(
-        id: msg.id, sender: msg.sender, ttl: msg.ttl - 1, content: msg.content,
-        timestampMs: msg.timestampMs, type: 'SOS', lat: msg.lat, lng: msg.lng,
-      );
+      final relay = SosMessage(id: msg.id, sender: msg.sender, ttl: msg.ttl - 1, content: msg.content, timestampMs: msg.timestampMs, type: 'SOS', lat: msg.lat, lng: msg.lng);
       _relayMessage(relay);
     }
   }
 
   Future<void> _sendAck(String forMessageId, String toSender, String toEndpointId) async {
-    final ack = SosMessage(
-      id: 'ack_${DateTime.now().millisecondsSinceEpoch}', sender: _userName, ttl: 1, content: '',
-      timestampMs: DateTime.now().millisecondsSinceEpoch, type: 'ACK', ackFor: forMessageId,
-    );
+    final ack = SosMessage(id: 'ack_${DateTime.now().millisecondsSinceEpoch}', sender: _userName, ttl: 1, content: '', timestampMs: DateTime.now().millisecondsSinceEpoch, type: 'ACK', ackFor: forMessageId);
     await _sendWithRetry(toEndpointId, Uint8List.fromList(utf8.encode(ack.encode(_sharedKey))));
   }
 
   Future<void> _relayMessage(SosMessage msg) async {
     final data = Uint8List.fromList(utf8.encode(msg.encode(_sharedKey)));
-    final targetsCopy = List<Map<String, dynamic>>.from(_targets);
-    await Future.wait(targetsCopy.map((t) => _sendWithRetry(t['id'], data)));
+    await Future.wait(List<Map<String, dynamic>>.from(_targets).map((t) => _sendWithRetry(t['id'], data)));
   }
 
   void _showSosReceived(SosMessage msg) {
@@ -480,56 +402,56 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         backgroundColor: const Color(0xFF1E1E1E),
         title: Text('🚨 استغاثة من ${msg.sender}', style: const TextStyle(color: Colors.redAccent)),
         content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(msg.content, style: const TextStyle(color: Colors.white, fontSize: 16)),
-            if (msg.lat != null && msg.lng != null) ...[
-              const Divider(color: Colors.grey),
-              const Text('📍 الموقع الجغرافي متوفر', style: TextStyle(color: Colors.cyanAccent, fontSize: 12)),
-            ]
+            if (msg.lat != null && msg.lng != null) const Text('📍 الموقع الجغرافي متوفر', style: TextStyle(color: Colors.cyanAccent, fontSize: 12)),
           ],
         ),
         actions: [
           if (msg.lat != null && msg.lng != null)
             TextButton.icon(
-              icon: const Icon(Icons.map, color: Colors.greenAccent),
-              label: const Text('عرض على الخريطة', style: TextStyle(color: Colors.greenAccent)),
+              icon: const Icon(Icons.map, color: Colors.greenAccent), label: const Text('عرض على الخريطة', style: TextStyle(color: Colors.greenAccent)),
               onPressed: () async {
                 final url = Uri.parse('https://www.google.com/maps/search/?api=1&query=${msg.lat},${msg.lng}');
-                if (await canLaunchUrl(url)) {
-                  await launchUrl(url, mode: LaunchMode.externalApplication);
-                }
+                if (await canLaunchUrl(url)) await launchUrl(url, mode: LaunchMode.externalApplication);
               },
             ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('حسناً', style: TextStyle(color: Colors.cyanAccent)),
-          ),
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('حسناً', style: TextStyle(color: Colors.cyanAccent))),
         ],
       ),
     );
   }
 
+  Future<void> _testIncomingSos() async {
+    final msg = SosMessage(
+      id: 'test_${DateTime.now().millisecondsSinceEpoch}',
+      sender: "جهاز تجريبي",
+      ttl: 1,
+      content: "هذه رسالة اختبار! تأكد من أن الصوت والاهتزاز والخريطة تعمل.",
+      timestampMs: DateTime.now().millisecondsSinceEpoch,
+      type: 'SOS',
+      lat: 24.7136,
+      lng: 46.6753,
+    );
+    _handleIncomingMessage(msg, "dummy_endpoint");
+  }
+
   void _showLog() {
     showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1E1E1E),
+      context: context, backgroundColor: const Color(0xFF1E1E1E),
       builder: (context) => ListView(
         padding: const EdgeInsets.all(16),
         children: [
           const Text('📜 سجل الرسائل', style: TextStyle(color: Colors.cyanAccent, fontSize: 20, fontWeight: FontWeight.bold)),
           const Divider(color: Colors.grey),
-          if (_messageLog.isEmpty)
-            const Padding(padding: EdgeInsets.all(20), child: Text('لا توجد رسائل بعد', style: TextStyle(color: Colors.grey)))
+          if (_messageLog.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('لا توجد رسائل بعد', style: TextStyle(color: Colors.grey)))
           else
             ..._messageLog.reversed.map((m) {
-              final time = DateTime.fromMillisecondsSinceEpoch(m.timestampMs);
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text('من: ${m.sender}', style: const TextStyle(color: Colors.cyanAccent)),
-                subtitle: Text('${m.content}\n${time.hour}:${time.minute.toString().padLeft(2, "0")}', style: const TextStyle(color: Colors.white70)),
-                isThreeLine: true,
+                subtitle: Text(m.content, style: const TextStyle(color: Colors.white70)),
                 trailing: (m.lat != null && m.lng != null) ? IconButton(
                   icon: const Icon(Icons.map, color: Colors.greenAccent),
                   onPressed: () async {
@@ -553,24 +475,16 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: _ttlOptions.entries.map((entry) {
-            final isSelected = entry.value == _maxTtl;
             return ListTile(
-              leading: Icon(isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: isSelected ? Colors.cyanAccent : Colors.grey),
-              title: Text(entry.key, style: TextStyle(color: isSelected ? Colors.cyanAccent : Colors.white)),
-              subtitle: Text('حتى ${entry.value} قفزة عبر الأجهزة', style: const TextStyle(color: Colors.grey, fontSize: 11)),
+              leading: Icon(entry.value == _maxTtl ? Icons.radio_button_checked : Icons.radio_button_unchecked, color: entry.value == _maxTtl ? Colors.cyanAccent : Colors.grey),
+              title: Text(entry.key, style: TextStyle(color: entry.value == _maxTtl ? Colors.cyanAccent : Colors.white)),
               onTap: () => Navigator.pop(context, entry.value),
             );
           }).toList(),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.grey)))],
       ),
     );
-
-    if (selected != null) {
-      setState(() => _maxTtl = selected);
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('maxTtl', selected);
-    }
+    if (selected != null) setState(() => _maxTtl = selected);
   }
 
   Future<void> _showKeySettings() async {
@@ -579,54 +493,29 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('🔑 مفتاح التشفير المشترك', style: TextStyle(color: Colors.cyanAccent)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('يجب أن يكون المفتاح نفسه على كل الأجهزة ليفك بعضها رسائل بعض.', style: TextStyle(color: Colors.grey, fontSize: 12)),
-            const SizedBox(height: 12),
-            TextField(
-              controller: TextEditingController(text: _sharedKey),
-              style: const TextStyle(color: Colors.white),
-              maxLength: 32,
-              decoration: const InputDecoration(
-                hintText: 'المفتاح (حتى 32 حرفًا)',
-                hintStyle: TextStyle(color: Colors.grey),
-                enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.cyanAccent)),
-                focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.cyanAccent, width: 2)),
-              ),
-              onChanged: (v) => newKey = v,
-            ),
-          ],
+        title: const Text('🔑 مفتاح التشفير', style: TextStyle(color: Colors.cyanAccent)),
+        content: TextField(
+          controller: TextEditingController(text: _sharedKey), style: const TextStyle(color: Colors.white), maxLength: 32,
+          decoration: const InputDecoration(hintText: 'المفتاح', hintStyle: TextStyle(color: Colors.grey)),
+          onChanged: (v) => newKey = v,
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
-            onPressed: () => Navigator.pop(context, newKey),
-            child: const Text('حفظ', style: TextStyle(color: Colors.black)),
-          ),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent), onPressed: () => Navigator.pop(context, newKey), child: const Text('حفظ', style: TextStyle(color: Colors.black))),
         ],
       ),
     );
-
     if (result != null && result.trim().isNotEmpty) {
       setState(() => _sharedKey = result.trim());
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('sharedKey', _sharedKey);
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم تحديث المفتاح'), backgroundColor: Colors.green));
+      (await SharedPreferences.getInstance()).setString('sharedKey', _sharedKey);
     }
   }
 
   @override
   void dispose() {
-    _discoveryTimer?.cancel();
-    _stopDiscoveryTimer?.cancel();
-    Nearby().stopAdvertising();
-    Nearby().stopDiscovery();
-    Nearby().stopAllEndpoints();
-    _sweepController.dispose();
-    _pulseController.dispose();
+    _discoveryTimer?.cancel(); _stopDiscoveryTimer?.cancel();
+    Nearby().stopAdvertising(); Nearby().stopDiscovery(); Nearby().stopAllEndpoints();
+    _sweepController.dispose(); _pulseController.dispose();
     super.dispose();
   }
 
@@ -635,26 +524,38 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E17),
       appBar: AppBar(
-        title: const Text('الرادار', style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold, letterSpacing: 2)),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.shield_moon, color: Colors.cyanAccent, size: 28),
+            const SizedBox(width: 10),
+            ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [Colors.cyanAccent, Colors.white, Colors.cyanAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(bounds),
+              child: const Text(
+                'الناصح',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 2,
+                ),
+              ),
+            ),
+          ],
+        ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
-          IconButton(icon: const Icon(Icons.vpn_key, color: Colors.cyanAccent), tooltip: 'مفتاح التشفير', onPressed: _showKeySettings),
-          IconButton(icon: const Icon(Icons.history, color: Colors.cyanAccent), tooltip: 'السجل', onPressed: _showLog),
-          IconButton(icon: const Icon(Icons.tune, color: Colors.cyanAccent), tooltip: 'مدى الانتشار: $_maxTtl قفزات', onPressed: _showTtlSelector),
-          IconButton(
-            icon: Icon(_isScanning ? Icons.stop : Icons.search, color: Colors.cyanAccent),
-            onPressed: () {
-              if (_isScanning) {
-                Nearby().stopDiscovery();
-                setState(() => _isScanning = false);
-              } else {
-                _startDiscovery();
-              }
-            },
-          ),
+          IconButton(icon: const Icon(Icons.auto_awesome, color: Colors.amberAccent), tooltip: 'اختبار', onPressed: _testIncomingSos),
+          IconButton(icon: const Icon(Icons.vpn_key), onPressed: _showKeySettings),
+          IconButton(icon: const Icon(Icons.history), onPressed: _showLog),
+          IconButton(icon: const Icon(Icons.tune), onPressed: _showTtlSelector),
         ],
       ),
       body: LayoutBuilder(
@@ -667,89 +568,79 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
             children: [
               Center(
                 child: SizedBox(
-                  width: size,
-                  height: size,
+                  width: size, height: size,
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      ...List.generate(4, (i) {
-                        return AnimatedBuilder(
-                          animation: _pulseController,
-                          builder: (context, child) => Container(
-                            width: (size / 4) * (i + 1),
-                            height: (size / 4) * (i + 1),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(color: Colors.cyanAccent.withOpacity(0.1 + (_pulseController.value * 0.2)), width: 1.5),
-                            ),
-                          ),
-                        );
-                      }),
+                      ...List.generate(4, (i) => AnimatedBuilder(
+                        animation: _pulseController,
+                        builder: (context, child) => Container(
+                          width: (size / 4) * (i + 1), height: (size / 4) * (i + 1),
+                          decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.cyanAccent.withOpacity(0.1 + (_pulseController.value * 0.2)), width: 1.5)),
+                        ),
+                      )),
                       CustomPaint(size: Size(size, size), painter: RadarGridPainter()),
                       AnimatedBuilder(
                         animation: _sweepController,
                         builder: (context, child) => Transform.rotate(
                           angle: _sweepController.value * 2 * pi,
                           child: Container(
-                            width: size * 0.5,
-                            height: size * 0.5,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: SweepGradient(
-                                colors: [Colors.cyanAccent.withOpacity(0.0), Colors.cyanAccent.withOpacity(0.4), Colors.cyanAccent.withOpacity(0.0)],
-                                stops: const [0.0, 0.5, 1.0],
-                              ),
-                            ),
+                            width: size * 0.5, height: size * 0.5,
+                            decoration: BoxDecoration(shape: BoxShape.circle, gradient: SweepGradient(colors: [Colors.cyanAccent.withOpacity(0.0), Colors.cyanAccent.withOpacity(0.4), Colors.cyanAccent.withOpacity(0.0)], stops: const [0.0, 0.5, 1.0])),
                           ),
                         ),
                       ),
                       ..._targets.map((t) {
                         final double a = t['angle'] as double;
                         return Positioned(
-                          left: center + radius * cos(a) - 12,
-                          top: center + radius * sin(a) - 12,
+                          left: center + radius * cos(a) - 12, top: center + radius * sin(a) - 12,
                           child: Column(
                             children: [
-                              Container(
-                                width: 24, height: 24,
-                                decoration: BoxDecoration(
-                                  color: t['color'] as Color,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [BoxShadow(color: (t['color'] as Color).withOpacity(0.8), blurRadius: 15, spreadRadius: 2)],
-                                  border: Border.all(color: Colors.white, width: 1.5),
-                                ),
-                              ),
+                              Container(width: 24, height: 24, decoration: BoxDecoration(color: t['color'] as Color, shape: BoxShape.circle, boxShadow: [BoxShadow(color: (t['color'] as Color).withOpacity(0.8), blurRadius: 15, spreadRadius: 2)], border: Border.all(color: Colors.white, width: 1.5))),
                               const SizedBox(height: 4),
                               Text(t['name'], style: TextStyle(color: t['color'] as Color, fontSize: 11, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         );
                       }).toList(),
-                      Container(
-                        width: 16, height: 16,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                          boxShadow: [BoxShadow(color: Colors.cyanAccent, blurRadius: 20, spreadRadius: 5)],
-                        ),
-                      ),
+                      Container(width: 16, height: 16, decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.cyanAccent, blurRadius: 20, spreadRadius: 5)])),
                     ],
                   ),
                 ),
               ),
+              
+              // ✅ الشعار الجديد
+              Positioned(
+                bottom: 120,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: Text(
+                    'الناصح يقدم الحل',
+                    style: TextStyle(
+                      color: Colors.cyanAccent.withOpacity(0.7),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 1.5,
+                      shadows: [
+                        Shadow(
+                          color: Colors.cyanAccent.withOpacity(0.5),
+                          blurRadius: 10,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
               Positioned(
                 bottom: 30, left: 0, right: 0,
                 child: Center(
                   child: FloatingActionButton.extended(
                     onPressed: _isSosSending ? null : _sendSosBroadcast,
                     backgroundColor: _isSosSending ? Colors.grey : Colors.redAccent,
-                    icon: _isSosSending
-                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Icon(Icons.warning, color: Colors.white),
-                    label: Text(
-                      _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
-                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                    ),
+                    icon: _isSosSending ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Icon(Icons.warning, color: Colors.white),
+                    label: Text(_isSosSending ? 'جاري الإرسال...' : 'إرسال SOS', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ),
@@ -764,10 +655,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 class RadarGridPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.15)
-      ..strokeWidth = 1.0
-      ..style = PaintingStyle.stroke;
+    final paint = Paint()..color = Colors.cyanAccent.withOpacity(0.15)..strokeWidth = 1.0..style = PaintingStyle.stroke;
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2;
     canvas.drawLine(Offset(center.dx, 0), Offset(center.dx, size.height), paint);
