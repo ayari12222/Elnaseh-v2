@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:audioplayers/audioplayers.dart'; 
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,7 +12,6 @@ import 'package:nearby_connections/nearby_connections.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:torch_light/torch_light.dart';
 
 // ============================================================
 // مساعد التشفير
@@ -150,6 +150,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   String? _activeSosId;
   final Set<String> _ackedNames = {};
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   @override
   void initState() {
     super.initState();
@@ -169,29 +171,21 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   }
 
   Future<void> _initNearby() async {
-    // ✅ 1. طلب الأذونات
     final statuses = await [
-      Permission.location,
-      Permission.bluetooth,
-      Permission.bluetoothScan,
-      Permission.bluetoothAdvertise,
-      Permission.bluetoothConnect,
-      Permission.nearbyWifiDevices,
+      Permission.location, Permission.bluetooth, Permission.bluetoothScan,
+      Permission.bluetoothAdvertise, Permission.bluetoothConnect, Permission.nearbyWifiDevices,
     ].request();
 
-    // ✅ 2. التحقق من إذن الموقع والبلوتوث
     if ((statuses[Permission.location]?.isGranted ?? false) &&
         (statuses[Permission.bluetoothScan]?.isGranted ?? false)) {
       
-      // ✅ 3. التحقق من أن خدمة الموقع (GPS) تعمل
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('⚠️ يرجى تشغيل خدمة الموقع (GPS) من إعدادات الهاتف!'),
-              backgroundColor: Colors.red,
-              duration: Duration(seconds: 10),
+              backgroundColor: Colors.red, duration: Duration(seconds: 10),
             ),
           );
         }
@@ -203,7 +197,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('يجب منح أذونات الموقع والبلوتوث للعمل'), backgroundColor: Colors.orange),
+          const SnackBar(content: Text('يجب منح أذونات الموقع والبلوتوث'), backgroundColor: Colors.orange),
         );
       }
     }
@@ -232,14 +226,8 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         serviceId: serviceId,
       );
       setState(() => _isAdvertising = true);
-      debugPrint("✅ بدأ الإعلان باسم: $_advertiseName");
     } catch (e) {
       debugPrint("❌ فشل الإعلان: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل الإعلان: $e'), backgroundColor: Colors.red),
-        );
-      }
     }
   }
 
@@ -267,7 +255,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
               'radius': _targetRadius, 'color': Colors.cyanAccent,
             });
           });
-          debugPrint("✅ تم العثور على جهاز: $name");
         },
         onEndpointLost: (id) => setState(() => _targets.removeWhere((t) => t['id'] == id)),
         serviceId: serviceId,
@@ -280,19 +267,20 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
       });
     } catch (e) {
       if (mounted) setState(() => _isScanning = false);
-      debugPrint("❌ فشل البحث: $e");
     }
   }
 
   Future<void> _alertSosReceived() async {
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
+
     try {
-      SystemSound.play(SystemSoundType.alert);
-      SystemSound.play(SystemSoundType.click);
+      await _audioPlayer.play(AssetSource('war-alarm-sound-long.mp3'));
     } catch (e) {
-      debugPrint("خطأ في الصوت: $e");
+      debugPrint("❌ خطأ في تشغيل الصوت: $e");
+      SystemSound.play(SystemSoundType.alert);
     }
+
     Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
     Future.delayed(const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
   }
@@ -539,24 +527,9 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
-  // ✅ دالة تشغيل/إطفاء الفلاش
-  Future<void> _toggleFlash() async {
-    try {
-      bool isTorchOn = await TorchLight.isTorchOn();
-      if (isTorchOn) {
-        await TorchLight.disableTorch();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم إطفاء الفلاش'), backgroundColor: Colors.grey));
-      } else {
-        await TorchLight.enableTorch();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم تشغيل الفلاش'), backgroundColor: Colors.amber));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('الفلاش غير متوفر: $e'), backgroundColor: Colors.red));
-    }
-  }
-
   @override
   void dispose() {
+    _audioPlayer.dispose();
     _discoveryTimer?.cancel(); _stopDiscoveryTimer?.cancel();
     Nearby().stopAdvertising(); Nearby().stopDiscovery(); Nearby().stopAllEndpoints();
     _sweepController.dispose(); _pulseController.dispose();
@@ -585,7 +558,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         centerTitle: true, backgroundColor: Colors.transparent, elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
-          IconButton(icon: const Icon(Icons.flashlight_on, color: Colors.amber), tooltip: 'الفلاش', onPressed: _toggleFlash),
           IconButton(icon: const Icon(Icons.auto_awesome, color: Colors.amberAccent), tooltip: 'اختبار', onPressed: _testIncomingSos),
           IconButton(icon: const Icon(Icons.vpn_key), onPressed: _showKeySettings),
           IconButton(icon: const Icon(Icons.history), onPressed: _showLog),
