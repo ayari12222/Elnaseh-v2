@@ -24,6 +24,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   bool _isSosSending = false;
 
   final Set<String> _receivedMessageIds = {};
+  Timer? _discoveryTimer;
 
   String _userName = "مستخدم";
   String get _advertiseName => "Elnaseh_$_userName";
@@ -31,13 +32,11 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
   final Strategy strategy = Strategy.P2P_CLUSTER;
   final String serviceId = "com.elnaseh.app";
 
-  // ✅ المرحلة 1: ثوابت التوزيع البصري
   static const double _targetRadius = 180.0;
   static const double _centerOffset = 250.0;
+  static const int _maxTargets = 20;
 
-  // ✅ المرحلة 2.5: TTL قابل للتعديل
   int _maxTtl = 5;
-
   static const Map<String, int> _ttlOptions = {
     'قريب (3)': 3,
     'متوازن (5)': 5,
@@ -82,7 +81,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     if (statuses[Permission.location]!.isGranted &&
         statuses[Permission.bluetoothScan]!.isGranted) {
       _startAdvertising();
-      _startDiscovery();
+      _startDiscoveryWithTimer();
     } else {
       debugPrint("الأذونات غير ممنوحة");
     }
@@ -121,6 +120,19 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
+  // ✅ تحسين: البحث يعمل 10 ثوانٍ، ثم يتوقف 30 ثانية
+  void _startDiscoveryWithTimer() {
+    _startDiscovery();
+    _discoveryTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (_isScanning) {
+        Nearby().stopDiscovery();
+        setState(() => _isScanning = false);
+      } else {
+        _startDiscovery();
+      }
+    });
+  }
+
   Future<void> _startDiscovery() async {
     if (_isScanning) return;
     setState(() => _isScanning = true);
@@ -133,7 +145,11 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
           if (!_targets.any((t) => t['id'] == id)) {
             setState(() {
-              // ✅ المرحلة 1: زاوية ثابتة
+              // ✅ تحسين: حذف أقدم جهاز إذا وصلنا للحد الأقصى
+              if (_targets.length >= _maxTargets) {
+                _targets.removeAt(0);
+              }
+
               final double angle =
                   (_targets.length * (2 * pi / 8)) - (pi / 2);
 
@@ -164,14 +180,12 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     }
   }
 
-  // ✅ المرحلة 1: إعادة توزيع الزوايا
   void _reassignAngles() {
     for (int i = 0; i < _targets.length; i++) {
       _targets[i]['angle'] = (i * (2 * pi / 8)) - (pi / 2);
     }
   }
 
-  // ✅ المرحلة 2.5: اختيار مدى الانتشار
   Future<void> _showTtlSelector() async {
     final selected = await showDialog<int>(
       context: context,
@@ -283,7 +297,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
     HapticFeedback.vibrate();
 
     String messageId = DateTime.now().millisecondsSinceEpoch.toString();
-    // ✅ المرحلة 2: TTL مضمّن في الرسالة
     String fullMessage = "🚨 SOS|$messageId|$_userName|$_maxTtl|$customMessage";
     _receivedMessageIds.add(messageId);
 
@@ -311,7 +324,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   void _handleIncomingMessage(String message) {
     List<String> parts = message.split('|');
-    // ✅ المرحلة 2: 5 أجزاء
     if (parts.length < 5) return;
     if (parts[0] != "🚨 SOS") return;
 
@@ -325,7 +337,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
     _showSosReceived(senderName, content);
 
-    // ✅ المرحلة 2: إعادة البث فقط إذا بقي TTL
     if (ttl > 1) {
       String relayed = "🚨 SOS|$messageId|$senderName|${ttl - 1}|$content";
       _relayMessage(relayed);
@@ -368,6 +379,7 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    _discoveryTimer?.cancel();
     Nearby().stopAdvertising();
     Nearby().stopDiscovery();
     Nearby().stopAllEndpoints();
@@ -394,7 +406,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
         elevation: 0,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
-          // ✅ المرحلة 2.5: زر اختيار المدى
           IconButton(
             icon: const Icon(Icons.tune, color: Colors.cyanAccent),
             tooltip: 'مدى الانتشار: $_maxTtl قفزات',
@@ -480,7 +491,6 @@ class _RadarScreenState extends State<RadarScreen> with TickerProviderStateMixin
                       );
                     },
                   ),
-                  // ✅ المرحلة 1: الأهداف
                   ..._targets.map((t) {
                     final double radius = t['radius'] as double;
                     final double angle = t['angle'] as double;
