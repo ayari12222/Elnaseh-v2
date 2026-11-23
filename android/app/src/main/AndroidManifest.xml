@@ -3,11 +3,14 @@
     
     <uses-permission android:name="android.permission.INTERNET"/>
     
+    <!-- ✅ إذن الاهتزاز (جديد) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- أذونات الموقع (مطلوبة للبلوتوث والواي فاي) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     
-    <!-- أذونات البلوتوث (القديمة والجديدة معاً) -->
+    <!-- أذونات البلوتوث -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
