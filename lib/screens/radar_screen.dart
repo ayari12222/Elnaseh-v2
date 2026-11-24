@@ -14,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../crypto_helper.dart';
 import '../database_helper.dart';
+import '../models.dart'; // تأكد من إنشاء هذا الملف كما هو موضح في الخطوة السابقة
 
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
@@ -718,7 +719,6 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            // 🔴 تم إصلاح هذا الجزء بإضافة النوع الصريح SosMessage
             ..._messageLog.reversed.map<SosMessage>((SosMessage m) {
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
@@ -1038,4 +1038,6 @@ class _RadarScreenState extends State<RadarScreen>
                   child: FloatingActionButton.extended(
                     onPressed: _isSosSending ? null : _sendSosBroadcast,
                     backgroundColor: _isSosSending ? Colors.grey : Colors.redAccent,
-                    icon: _isSosS
+                    icon: _isSosSending
+                        ? const SizedBox(
+                            width: 
