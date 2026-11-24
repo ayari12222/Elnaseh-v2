@@ -14,7 +14,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../crypto_helper.dart';
 import '../database_helper.dart';
-import '../models.dart';
 
 class RadarScreen extends StatefulWidget {
   const RadarScreen({super.key});
@@ -33,14 +32,9 @@ class _RadarScreenState extends State<RadarScreen>
   bool _isAdvertising = false;
   bool _isSosSending = false;
   bool _discoveryInProgress = false;
-
-  // ✅ حماية من الضغط المزدوج والإرسال المكرر
-  bool _sosInFlight = false;
-  bool _isSosDialogOpen = false;
-  bool _sosDialogOpen = false;
+  bool _showInstructions = true;
 
   final LinkedHashSet<String> _processedMessageIds = LinkedHashSet<String>();
-  final Set<String> _sentAcks = {}; // ✅ منع ACK مزدوج
   final List<SosMessage> _messageLog = [];
   final Set<String> _linkedEndpoints = {};
 
@@ -55,10 +49,10 @@ class _RadarScreenState extends State<RadarScreen>
   int _maxTtl = 5;
 
   static const Map<String, int> _ttlOptions = {
-    'قريب (3)': 3,
-    'متوازن (5)': 5,
-    'بعيد (10)': 10,
-    'طوارئ قصوى (15)': 15,
+    'قريب جداً (للأجهزة المحيطة فقط)': 3,
+    'متوازن (عبر بعض الأجهزة الوسيطة)': 5,
+    'بعيد (لمسافة طويلة)': 10,
+    'طوارئ قصوى (مسح شامل للمنطقة)': 15,
   };
 
   final Strategy strategy = Strategy.P2P_CLUSTER;
@@ -66,7 +60,6 @@ class _RadarScreenState extends State<RadarScreen>
   static const double _targetRadius = 180.0;
   static const int _maxTargets = 20;
   static const int _maxProcessedIds = 1000;
-  static const int _maxPayloadBytes = 4000; // ✅ حد آمن لحجم الحزمة
   static const Duration _ackTimeout = Duration(seconds: 5);
   static const String _dummyEndpoint = "dummy_endpoint";
 
@@ -85,20 +78,23 @@ class _RadarScreenState extends State<RadarScreen>
       vsync: this,
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
-    _loadPrefs().then((_) => _initNearby());
+    
+    _loadPrefs().then((_) {
+      _initNearby();
+      if (_showInstructions) {
+        Future.delayed(const Duration(milliseconds: 500), _showHelpDialog);
+      }
+    });
   }
 
   Future<void> _loadPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
-
-    bool newKeyGenerated = false;
-    String newKey = "";
-
     setState(() {
       _userName = prefs.getString('userName') ?? "مستخدم";
       _maxTtl = prefs.getInt('maxTtl') ?? 5;
-
+      _showInstructions = prefs.getBool('showInstructions') ?? true;
+      
       var savedId = prefs.getString('deviceId');
       if (savedId == null || savedId.isEmpty) {
         savedId = CryptoHelper.generateRandomKey().substring(0, 8);
@@ -110,28 +106,10 @@ class _RadarScreenState extends State<RadarScreen>
       if (savedKey == null || savedKey.isEmpty) {
         _sharedKey = CryptoHelper.generateRandomKey();
         prefs.setString('sharedKey', _sharedKey);
-        newKeyGenerated = true;
-        newKey = _sharedKey;
       } else {
         _sharedKey = savedKey;
       }
     });
-
-    // ✅ تنبيه المستخدم بإنشاء مفتاح جديد لمشاركته
-    if (newKeyGenerated && mounted) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '🔐 تم إنشاء مفتاح تشفير جديد: $newKey\nشاركه مع أصدقائك من "الإعدادات → مفتاح التشفير".',
-            ),
-            backgroundColor: Colors.cyanAccent,
-            duration: const Duration(seconds: 10),
-          ),
-        );
-      });
-    }
   }
 
   Future<void> _initNearby() async {
@@ -212,7 +190,6 @@ class _RadarScreenState extends State<RadarScreen>
       if (mounted) setState(() => _isAdvertising = true);
     } catch (e) {
       debugPrint("❌ فشل الإعلان: $e");
-      if (mounted) setState(() => _isAdvertising = false);
     }
   }
 
@@ -226,12 +203,6 @@ class _RadarScreenState extends State<RadarScreen>
 
   Future<void> _startDiscovery() async {
     if (_discoveryInProgress || !mounted) return;
-
-    // ✅ ضمان أن الإعلان يعمل قبل الاكتشاف
-    if (!_isAdvertising) {
-      await _startAdvertising();
-    }
-
     _discoveryInProgress = true;
     try {
       await Nearby().stopDiscovery().catchError((_) {});
@@ -256,11 +227,10 @@ class _RadarScreenState extends State<RadarScreen>
             });
           });
 
-          // ✅ التحقق من mounted قبل التنفيذ
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (!mounted) return;
-            _ensureConnected(id);
-          });
+          Future.delayed(
+            const Duration(milliseconds: 500),
+            () => _ensureConnected(id),
+          );
         },
         onEndpointLost: (id) {
           _linkedEndpoints.remove(id);
@@ -331,11 +301,9 @@ class _RadarScreenState extends State<RadarScreen>
 
   Future<void> _syncMessagesWithPeer(String endpointId) async {
     try {
-      final unsent =
-          await DatabaseHelper.instance.getUnsentMessages(endpointId);
+      final unsent = await DatabaseHelper.instance.getUnsentMessages(endpointId);
       for (final rawMsg in unsent) {
-        final encryptedContent =
-            CryptoHelper.encrypt(rawMsg['content'] as String, _sharedKey);
+        final encryptedContent = CryptoHelper.encrypt(rawMsg['content'] as String, _sharedKey);
         final packet = MeshPacket(
           messageId: rawMsg['id'] as String,
           senderId: _deviceId,
@@ -345,19 +313,14 @@ class _RadarScreenState extends State<RadarScreen>
           type: rawMsg['type'] as String,
           timestampMs: rawMsg['timestampMs'] as int,
           encryptedPayload: encryptedContent,
-          lat: rawMsg['lat'] != null
-              ? (rawMsg['lat'] as num).toDouble()
-              : null,
-          lng: rawMsg['lng'] != null
-              ? (rawMsg['lng'] as num).toDouble()
-              : null,
+          lat: rawMsg['lat'] != null ? (rawMsg['lat'] as num).toDouble() : null,
+          lng: rawMsg['lng'] != null ? (rawMsg['lng'] as num).toDouble() : null,
         );
-
+        
         final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
         final ok = await _sendWithRetry(endpointId, data);
         if (ok) {
-          await DatabaseHelper.instance
-              .markAsSent(packet.messageId, endpointId);
+          await DatabaseHelper.instance.markAsSent(packet.messageId, endpointId);
         }
       }
     } catch (e) {
@@ -366,12 +329,6 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   Future<bool> _sendWithRetry(String endpointId, Uint8List data) async {
-    // ✅ التحقق من حجم الحزمة قبل الإرسال
-    if (data.length > _maxPayloadBytes) {
-      debugPrint("⚠️ حزمة كبيرة جداً: ${data.length} بايت");
-      return false;
-    }
-
     for (int attempt = 1; attempt <= 3; attempt++) {
       try {
         if (!_linkedEndpoints.contains(endpointId)) {
@@ -416,9 +373,6 @@ class _RadarScreenState extends State<RadarScreen>
   }
 
   Future<void> _sendSosBroadcast() async {
-    // ✅ منع الضغط المزدوج نهائياً
-    if (_sosInFlight || _isSosSending || _isSosDialogOpen) return;
-
     if (_targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -429,92 +383,76 @@ class _RadarScreenState extends State<RadarScreen>
       return;
     }
 
-    _isSosDialogOpen = true;
     final customMessage = await _askForMessage();
-    _isSosDialogOpen = false;
-
     if (customMessage == null || customMessage.trim().isEmpty) return;
 
-    // ✅ احسب العدد من نسخة الـ targets مباشرة
-    final targetsCopy = List<Map<String, dynamic>>.from(_targets);
-    if (targetsCopy.isEmpty) return;
-
-    _sosInFlight = true;
     setState(() {
       _isSosSending = true;
       _ackedNames.clear();
-      _activeSosTargetCount = targetsCopy.length;
+      _activeSosTargetCount = _targets.length;
     });
     HapticFeedback.heavyImpact();
 
-    try {
-      final pos = await _getCurrentLocation();
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final messageId = '${now}_${Random().nextInt(9999)}';
+    final pos = await _getCurrentLocation();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final messageId = '${now}_${Random().nextInt(9999)}';
 
-      final encryptedContent =
-          CryptoHelper.encrypt(customMessage.trim(), _sharedKey);
-      final packet = MeshPacket(
-        messageId: messageId,
-        senderId: _deviceId,
-        senderName: _userName,
-        targetId: "ALL",
-        ttl: _maxTtl,
-        type: 'SOS',
-        timestampMs: now,
-        encryptedPayload: encryptedContent,
-        lat: pos?.latitude,
-        lng: pos?.longitude,
-      );
+    final encryptedContent = CryptoHelper.encrypt(customMessage.trim(), _sharedKey);
+    final packet = MeshPacket(
+      messageId: messageId,
+      senderId: _deviceId,
+      senderName: _userName,
+      targetId: "ALL",
+      ttl: _maxTtl,
+      type: 'SOS',
+      timestampMs: now,
+      encryptedPayload: encryptedContent,
+      lat: pos?.latitude,
+      lng: pos?.longitude,
+    );
 
-      _processedMessageIds.add(messageId);
-      _activeSosId = messageId;
-      _activeSosIdResetTimer?.cancel();
+    _processedMessageIds.add(messageId);
+    _activeSosId = messageId;
+    _activeSosIdResetTimer?.cancel();
 
-      try {
-        await DatabaseHelper.instance.saveMessage({
-          'id': packet.messageId,
-          'sender': packet.senderName,
-          'content': customMessage.trim(),
-          'ttl': packet.ttl,
-          'lat': packet.lat,
-          'lng': packet.lng,
-          'timestampMs': packet.timestampMs,
-          'type': packet.type,
-        });
-      } catch (e) {
-        debugPrint("⚠️ فشل حفظ الرسالة في DB: $e");
-      }
+    await DatabaseHelper.instance.saveMessage({
+      'id': packet.messageId,
+      'sender': packet.senderName,
+      'content': customMessage.trim(),
+      'ttl': packet.ttl,
+      'lat': packet.lat,
+      'lng': packet.lng,
+      'timestampMs': packet.timestampMs,
+      'type': packet.type,
+    });
 
-      final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
-      await Future.wait(targetsCopy.map((t) => _sendWithRetry(t['id'], data)));
-      await Future.delayed(_ackTimeout);
+    final targetsCopy = List<Map<String, dynamic>>.from(_targets);
+    final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
 
-      if (!mounted) return;
-      setState(() => _isSosSending = false);
+    await Future.wait(targetsCopy.map((t) => _sendWithRetry(t['id'], data)));
+    await Future.delayed(_ackTimeout);
 
-      final ackedCount = _ackedNames.length;
-      final total = _activeSosTargetCount;
+    if (!mounted) return;
+    setState(() => _isSosSending = false);
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            ackedCount == 0
-                ? '⚠️ لم يصل التأكيد من أي جهاز'
-                : '✅ وصل التأكيد من $ackedCount من $total أجهزة',
-          ),
-          backgroundColor: ackedCount == 0 ? Colors.red : Colors.green,
-          duration: const Duration(seconds: 5),
+    final ackedCount = _ackedNames.length;
+    final total = _activeSosTargetCount;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          ackedCount == 0
+              ? '⚠️ لم يصل التأكيد من أي جهاز'
+              : '✅ وصل التأكيد من $ackedCount من $total أجهزة',
         ),
-      );
+        backgroundColor: ackedCount == 0 ? Colors.red : Colors.green,
+        duration: const Duration(seconds: 5),
+      ),
+    );
 
-      _activeSosIdResetTimer = Timer(const Duration(seconds: 30), () {
-        if (mounted) setState(() => _activeSosId = null);
-      });
-    } finally {
-      _sosInFlight = false;
-      if (mounted) setState(() => _isSosSending = false);
-    }
+    _activeSosIdResetTimer = Timer(const Duration(seconds: 30), () {
+      if (mounted) setState(() => _activeSosId = null);
+    });
   }
 
   Future<String?> _askForMessage() async {
@@ -553,31 +491,20 @@ class _RadarScreenState extends State<RadarScreen>
     controller.dispose();
     return result;
   }
-    void _onPayloadReceived(String fromEndpointId, Uint8List bytes) {
-    // ✅ حماية من الرسائل الكبيرة جداً
-    if (bytes.length > _maxPayloadBytes) {
-      debugPrint("⚠️ حزمة كبيرة تم تجاهلها: ${bytes.length} بايت");
-      return;
-    }
 
+  void _onPayloadReceived(String fromEndpointId, Uint8List bytes) {
     final raw = utf8.decode(bytes, allowMalformed: true);
     final packet = MeshPacket.tryDecodePacket(raw);
-
+    
     if (packet == null) return;
     if (packet.type != 'ACK' && packet.isExpired()) return;
-
-    // ✅ التحقق من senderId في ACK (منع انتحال)
-    if (packet.type == 'ACK' && packet.senderId.isEmpty) {
-      return;
-    }
 
     if (packet.targetId != "ALL" && packet.targetId != _deviceId) {
       _relayPacket(packet, fromEndpointId);
       return;
     }
 
-    final decryptedContent =
-        CryptoHelper.decrypt(packet.encryptedPayload, _sharedKey);
+    final decryptedContent = CryptoHelper.decrypt(packet.encryptedPayload, _sharedKey);
     if (decryptedContent == null) return;
 
     final msg = SosMessage(
@@ -593,8 +520,7 @@ class _RadarScreenState extends State<RadarScreen>
 
     _handleIncomingMessage(msg, fromEndpointId);
 
-    // ✅ الريلاي فقط لرسائل SOS (لا نُعيد بث ACK)
-    if (packet.ttl > 1 && packet.type != 'ACK') {
+    if (packet.ttl > 1) {
       final relayPacket = MeshPacket(
         messageId: packet.messageId,
         senderId: packet.senderId,
@@ -609,15 +535,9 @@ class _RadarScreenState extends State<RadarScreen>
       );
       _relayPacket(relayPacket, fromEndpointId);
     }
-  }
-
+  
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
-    // ✅ إرسال ACK مرة واحدة فقط لكل messageId
-    if (msg.type == 'SOS' && !_sentAcks.contains(msg.id)) {
-      _sentAcks.add(msg.id);
-      if (_sentAcks.length > _maxProcessedIds) {
-        _sentAcks.remove(_sentAcks.first);
-      }
+    if (msg.type == 'SOS') {
       _sendAck(msg.id, msg.sender, fromEndpointId);
     }
 
@@ -628,28 +548,23 @@ class _RadarScreenState extends State<RadarScreen>
       _processedMessageIds.remove(_processedMessageIds.first);
     }
 
-    try {
-      DatabaseHelper.instance.saveMessage({
-        'id': msg.id,
-        'sender': msg.sender,
-        'content': msg.content,
-        'ttl': msg.ttl,
-        'lat': msg.lat,
-        'lng': msg.lng,
-        'timestampMs': msg.timestampMs,
-        'type': msg.type,
-      });
-    } catch (e) {
-      debugPrint("⚠️ فشل حفظ الرسالة في DB: $e");
-    }
+    DatabaseHelper.instance.saveMessage({
+      'id': msg.id,
+      'sender': msg.sender,
+      'content': msg.content,
+      'ttl': msg.ttl,
+      'lat': msg.lat,
+      'lng': msg.lng,
+      'timestampMs': msg.timestampMs,
+      'type': msg.type,
+    });
 
     if (fromEndpointId != _dummyEndpoint) {
       DatabaseHelper.instance.markAsSent(msg.id, fromEndpointId);
     }
 
     if (msg.type == 'ACK') {
-      // ✅ ACK الآن يحمل "messageId:senderId" — نتحقق من البادئة
-      if (_activeSosId != null && msg.content.startsWith('$_activeSosId:')) {
+      if (_activeSosId != null && msg.content == _activeSosId) {
         if (mounted) setState(() => _ackedNames.add(msg.sender));
       }
       return;
@@ -669,14 +584,10 @@ class _RadarScreenState extends State<RadarScreen>
     String toEndpointId,
   ) async {
     if (toEndpointId == _dummyEndpoint) return;
-
-    // ✅ ACK يحمل "messageId:deviceId" لمنع الانتحال
-    final ackContent = '$forMessageId:$_deviceId';
-    final encryptedContent = CryptoHelper.encrypt(ackContent, _sharedKey);
-
+    
+    final encryptedContent = CryptoHelper.encrypt(forMessageId, _sharedKey);
     final packet = MeshPacket(
-      messageId:
-          'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
+      messageId: 'ack_${DateTime.now().millisecondsSinceEpoch}_${Random().nextInt(999)}',
       senderId: _deviceId,
       senderName: _userName,
       targetId: toSender,
@@ -696,7 +607,7 @@ class _RadarScreenState extends State<RadarScreen>
     final data = Uint8List.fromList(utf8.encode(packet.encodePacket()));
     final others = List<Map<String, dynamic>>.from(_targets)
         .where((t) => t['id'] != excludeEndpointId);
-
+    
     await Future.wait(others.map((t) => _sendWithRetry(t['id'], data)));
   }
 
@@ -704,22 +615,15 @@ class _RadarScreenState extends State<RadarScreen>
     HapticFeedback.vibrate();
     HapticFeedback.heavyImpact();
     SystemSound.play(SystemSoundType.alert);
-    Future.delayed(
-        const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
-    Future.delayed(
-        const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
-    Future.delayed(
-        const Duration(milliseconds: 1200), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 400), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 800), () => HapticFeedback.vibrate());
+    Future.delayed(const Duration(milliseconds: 1200), () => HapticFeedback.vibrate());
   }
 
   void _showSosReceived(SosMessage msg) {
-    // ✅ منع تراكم dialogs
-    if (!mounted || _sosDialogOpen) return;
-    _sosDialogOpen = true;
-
+    if (!mounted) return;
     showDialog(
       context: context,
-      barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         title: Text(
@@ -771,10 +675,7 @@ class _RadarScreenState extends State<RadarScreen>
               },
             ),
           TextButton(
-            onPressed: () {
-              _sosDialogOpen = false;
-              Navigator.pop(ctx);
-            },
+            onPressed: () => Navigator.pop(ctx),
             child: const Text(
               'حسناً',
               style: TextStyle(color: Colors.cyanAccent),
@@ -782,9 +683,7 @@ class _RadarScreenState extends State<RadarScreen>
           ),
         ],
       ),
-    ).then((_) {
-      _sosDialogOpen = false;
-    });
+    );
   }
 
   Future<void> _testIncomingSos() async {
@@ -826,7 +725,7 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            ..._messageLog.reversed.map<Widget>((SosMessage m) {
+            ..._messageLog.reversed.map<SosMessage>((m) {
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text(
@@ -845,8 +744,7 @@ class _RadarScreenState extends State<RadarScreen>
                             'https://www.google.com/maps/search/?api=1&query=${m.lat},${m.lng}',
                           );
                           if (await canLaunchUrl(url)) {
-                            await launchUrl(url,
-                                mode: LaunchMode.externalApplication);
+                            await launchUrl(url, mode: LaunchMode.externalApplication);
                           }
                         },
                       )
@@ -864,25 +762,32 @@ class _RadarScreenState extends State<RadarScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         title: const Text(
-          'مدى انتشار الاستغاثة',
+          'مدى وصول الاستغاثة',
           style: TextStyle(color: Colors.cyanAccent),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: _ttlOptions.entries.map((entry) {
-            final sel = entry.value == _maxTtl;
-            return ListTile(
-              leading: Icon(
-                sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
-                color: sel ? Colors.cyanAccent : Colors.grey,
-              ),
-              title: Text(
-                entry.key,
-                style: TextStyle(color: sel ? Colors.cyanAccent : Colors.white),
-              ),
-              onTap: () => Navigator.pop(ctx, entry.value),
-            );
-          }).toList(),
+          children: [
+            const Text(
+              'كلما زادت القيمة، انتقلت الرسالة عبر مسافة أطول وعبر أجهزة أكثر (يستهلك بطارية أكثر).',
+              style: TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+            const SizedBox(height: 10),
+            ..._ttlOptions.entries.map((entry) {
+              final sel = entry.value == _maxTtl;
+              return ListTile(
+                leading: Icon(
+                  sel ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                  color: sel ? Colors.cyanAccent : Colors.grey,
+                ),
+                title: Text(
+                  entry.key,
+                  style: TextStyle(color: sel ? Colors.cyanAccent : Colors.white),
+                ),
+                onTap: () => Navigator.pop(ctx, entry.value),
+              );
+            }),
+          ],
         ),
       ),
     );
@@ -927,9 +832,49 @@ class _RadarScreenState extends State<RadarScreen>
     controller.dispose();
     if (result != null && result.trim().isNotEmpty) {
       setState(() => _sharedKey = result.trim());
-      (await SharedPreferences.getInstance())
-          .setString('sharedKey', _sharedKey);
+      (await SharedPreferences.getInstance()).setString('sharedKey', _sharedKey);
     }
+  }
+
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text(
+          '🛡️ مرحباً بك في الناصح',
+          style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold),
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('1️⃣ تأكد من تشغيل البلوتوث والموقع (GPS).', style: TextStyle(color: Colors.white, fontSize: 16)),
+              SizedBox(height: 10),
+              Text('2️⃣ سيظهر لك هنا أقرب المستخدمين إليك كأجهزة على الرادار.', style: TextStyle(color: Colors.white, fontSize: 16)),
+              SizedBox(height: 10),
+              Text('3️⃣ عند وقوع خطر، اضغط على الزر الأحمر "إرسال استغاثة SOS".', style: TextStyle(color: Colors.white, fontSize: 16)),
+              SizedBox(height: 10),
+              Text('4️⃣ ستصلك رسائل الطوارئ من الآخرين حتى لو كانوا بعيدين عنك، لأن التطبيق يعمل كشبكة تنقل الرسائل تلقائياً.', style: TextStyle(color: Colors.white, fontSize: 16)),
+              SizedBox(height: 20),
+              Text('💡 ملاحظة: لا يحتاج التطبيق إلى إنترنت إطلاقاً.', style: TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold)),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
+            onPressed: () {
+              Navigator.pop(ctx);
+              SharedPreferences.getInstance().then((prefs) => prefs.setBool('showInstructions', false));
+            },
+            child: const Text('فهمت، ابدأ الآن', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -937,15 +882,9 @@ class _RadarScreenState extends State<RadarScreen>
     _discoveryTimer?.cancel();
     _stopDiscoveryTimer?.cancel();
     _activeSosIdResetTimer?.cancel();
-
-    // ✅ تنظيف آمن لموارد الشبكة
-    Nearby().stopAdvertising().catchError((_) {});
-    Nearby().stopDiscovery().catchError((_) {});
-    Nearby().stopAllEndpoints().catchError((_) {});
-
-    _linkedEndpoints.clear();
-    _targets.clear();
-
+    Nearby().stopAdvertising();
+    Nearby().stopDiscovery();
+    Nearby().stopAllEndpoints();
     _sweepController.dispose();
     _pulseController.dispose();
     super.dispose();
@@ -971,9 +910,9 @@ class _RadarScreenState extends State<RadarScreen>
                 'الناصح',
                 style: TextStyle(
                   color: Colors.white,
-                  fontSize: 26,
+                  fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
+                  letterSpacing: 1.5,
                 ),
               ),
             ),
@@ -985,24 +924,19 @@ class _RadarScreenState extends State<RadarScreen>
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
           IconButton(
-            icon: const Icon(Icons.auto_awesome, color: Colors.amberAccent),
-            tooltip: 'اختبار',
-            onPressed: _testIncomingSos,
+            icon: const Icon(Icons.help_outline, color: Colors.cyanAccent),
+            tooltip: 'كيف يعمل التطبيق؟',
+            onPressed: _showHelpDialog,
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.cyanAccent),
             color: const Color(0xFF1E1E1E),
             onSelected: (value) {
               switch (value) {
-                case 'key':
-                  _showKeySettings();
-                  break;
-                case 'log':
-                  _showLog();
-                  break;
-                case 'ttl':
-                  _showTtlSelector();
-                  break;
+                case 'key': _showKeySettings(); break;
+                case 'log': _showLog(); break;
+                case 'ttl': _showTtlSelector(); break;
+                case 'test': _testIncomingSos(); break;
               }
             },
             itemBuilder: (ctx) => const [
@@ -1010,23 +944,28 @@ class _RadarScreenState extends State<RadarScreen>
                 value: 'key',
                 child: ListTile(
                   leading: Icon(Icons.vpn_key, color: Colors.cyanAccent),
-                  title: Text('مفتاح التشفير',
-                      style: TextStyle(color: Colors.white)),
+                  title: Text('مفتاح التشفير', style: TextStyle(color: Colors.white)),
                 ),
               ),
               PopupMenuItem(
                 value: 'log',
                 child: ListTile(
                   leading: Icon(Icons.history, color: Colors.cyanAccent),
-                  title: Text('السجل', style: TextStyle(color: Colors.white)),
+                  title: Text('سجل الرسائل', style: TextStyle(color: Colors.white)),
                 ),
               ),
               PopupMenuItem(
                 value: 'ttl',
                 child: ListTile(
-                  leading: Icon(Icons.tune, color: Colors.cyanAccent),
-                  title: Text('مدى الانتشار',
-                      style: TextStyle(color: Colors.white)),
+                  leading: Icon(Icons.wifi_tethering, color: Colors.cyanAccent),
+                  title: Text('قوة بث الرسالة', style: TextStyle(color: Colors.white)),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'test',
+                child: ListTile(
+                  leading: Icon(Icons.auto_awesome, color: Colors.amberAccent),
+                  title: Text('رسالة تجريبية', style: TextStyle(color: Colors.white)),
                 ),
               ),
             ],
@@ -1035,11 +974,9 @@ class _RadarScreenState extends State<RadarScreen>
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final size =
-              max(0.0, min(constraints.maxWidth, constraints.maxHeight - 120));
+          final size = max(0.0, min(constraints.maxWidth, constraints.maxHeight - 120));
           final center = size / 2;
-          // ✅ هامش ثابت 30px لضمان بقاء الأهداف داخل الحدود دائماً
-          final radius = max(0.0, (size / 2) - 30.0);
+          final radius = size * 0.36;
 
           return Stack(
             children: [
@@ -1060,17 +997,14 @@ class _RadarScreenState extends State<RadarScreen>
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
                               border: Border.all(
-                                color: Colors.cyanAccent.withOpacity(
-                                    0.1 + (_pulseController.value * 0.2)),
+                                color: Colors.cyanAccent.withOpacity(0.1 + (_pulseController.value * 0.2)),
                                 width: 1.5,
                               ),
                             ),
                           ),
                         ),
                       ),
-                      CustomPaint(
-                          size: Size(size, size),
-                          painter: RadarGridPainter()),
+                      CustomPaint(size: Size(size, size), painter: RadarGridPainter()),
                       AnimatedBuilder(
                         animation: _sweepController,
                         builder: (context, child) => Container(
@@ -1085,20 +1019,16 @@ class _RadarScreenState extends State<RadarScreen>
                                 Colors.cyanAccent.withOpacity(0.0),
                               ],
                               stops: const [0.0, 0.5, 1.0],
-                              transform: GradientRotation(
-                                  _sweepController.value * 2 * pi),
+                              transform: GradientRotation(_sweepController.value * 2 * pi),
                             ),
                           ),
                         ),
                       ),
                       ..._targets.map((t) {
                         final double a = t['angle'] as double;
-                        // ✅ حساب آمن للموقع داخل الحدود
-                        final dx = center + radius * cos(a);
-                        final dy = center + radius * sin(a);
                         return Positioned(
-                          left: dx - 12,
-                          top: dy - 12,
+                          left: center + radius * cos(a) - 12,
+                          top: center + radius * sin(a) - 12,
                           child: Column(
                             children: [
                               Container(
@@ -1109,14 +1039,12 @@ class _RadarScreenState extends State<RadarScreen>
                                   shape: BoxShape.circle,
                                   boxShadow: [
                                     BoxShadow(
-                                      color: (t['color'] as Color)
-                                          .withOpacity(0.8),
+                                      color: (t['color'] as Color).withOpacity(0.8),
                                       blurRadius: 15,
                                       spreadRadius: 2,
                                     ),
                                   ],
-                                  border: Border.all(
-                                      color: Colors.white, width: 1.5),
+                                  border: Border.all(color: Colors.white, width: 1.5),
                                 ),
                               ),
                               const SizedBox(height: 4),
@@ -1139,10 +1067,7 @@ class _RadarScreenState extends State<RadarScreen>
                           color: Colors.white,
                           shape: BoxShape.circle,
                           boxShadow: [
-                            BoxShadow(
-                                color: Colors.cyanAccent,
-                                blurRadius: 20,
-                                spreadRadius: 5),
+                            BoxShadow(color: Colors.cyanAccent, blurRadius: 20, spreadRadius: 5),
                           ],
                         ),
                       ),
@@ -1162,11 +1087,7 @@ class _RadarScreenState extends State<RadarScreen>
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       letterSpacing: 1.5,
-                      shadows: [
-                        Shadow(
-                            color: Colors.cyanAccent.withOpacity(0.5),
-                            blurRadius: 10),
-                      ],
+                      shadows: [Shadow(color: Colors.cyanAccent.withOpacity(0.5), blurRadius: 10)],
                     ),
                   ),
                 ),
@@ -1178,20 +1099,17 @@ class _RadarScreenState extends State<RadarScreen>
                 child: Center(
                   child: FloatingActionButton.extended(
                     onPressed: _isSosSending ? null : _sendSosBroadcast,
-                    backgroundColor:
-                        _isSosSending ? Colors.grey : Colors.redAccent,
+                    backgroundColor: _isSosSending ? Colors.grey : Colors.redAccent,
                     icon: _isSosSending
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2),
+                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                           )
                         : const Icon(Icons.warning, color: Colors.white),
                     label: Text(
-                      _isSosSending ? 'جاري الإرسال...' : 'إرسال SOS',
-                      style: const TextStyle(
-                          color: Colors.white, fontWeight: FontWeight.bold),
+                      _isSosSending ? 'جاري الإرسال...' : 'إرسال استغاثة SOS',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
