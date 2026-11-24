@@ -82,7 +82,14 @@ class _RadarScreenState extends State<RadarScreen>
     _loadPrefs().then((_) {
       _initNearby();
       if (_showInstructions) {
-        Future.delayed(const Duration(milliseconds: 500), _showHelpDialog);
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HelpScreen()),
+            );
+          }
+        });
       }
     });
   }
@@ -535,6 +542,7 @@ class _RadarScreenState extends State<RadarScreen>
       );
       _relayPacket(relayPacket, fromEndpointId);
     }
+  }
   
   void _handleIncomingMessage(SosMessage msg, String fromEndpointId) {
     if (msg.type == 'SOS') {
@@ -725,7 +733,7 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            ..._messageLog.reversed.map<SosMessage>((m) {
+            ..._messageLog.reversed.map<SosMessage>((m) {  // <--- الإصلاح هنا
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text(
@@ -836,47 +844,6 @@ class _RadarScreenState extends State<RadarScreen>
     }
   }
 
-  void _showHelpDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text(
-          '🛡️ مرحباً بك في الناصح',
-          style: TextStyle(color: Colors.cyanAccent, fontWeight: FontWeight.bold),
-        ),
-        content: const SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('1️⃣ تأكد من تشغيل البلوتوث والموقع (GPS).', style: TextStyle(color: Colors.white, fontSize: 16)),
-              SizedBox(height: 10),
-              Text('2️⃣ سيظهر لك هنا أقرب المستخدمين إليك كأجهزة على الرادار.', style: TextStyle(color: Colors.white, fontSize: 16)),
-              SizedBox(height: 10),
-              Text('3️⃣ عند وقوع خطر، اضغط على الزر الأحمر "إرسال استغاثة SOS".', style: TextStyle(color: Colors.white, fontSize: 16)),
-              SizedBox(height: 10),
-              Text('4️⃣ ستصلك رسائل الطوارئ من الآخرين حتى لو كانوا بعيدين عنك، لأن التطبيق يعمل كشبكة تنقل الرسائل تلقائياً.', style: TextStyle(color: Colors.white, fontSize: 16)),
-              SizedBox(height: 20),
-              Text('💡 ملاحظة: لا يحتاج التطبيق إلى إنترنت إطلاقاً.', style: TextStyle(color: Colors.cyanAccent, fontSize: 14, fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
-        actions: [
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
-            onPressed: () {
-              Navigator.pop(ctx);
-              SharedPreferences.getInstance().then((prefs) => prefs.setBool('showInstructions', false));
-            },
-            child: const Text('فهمت، ابدأ الآن', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   void dispose() {
     _discoveryTimer?.cancel();
@@ -926,7 +893,12 @@ class _RadarScreenState extends State<RadarScreen>
           IconButton(
             icon: const Icon(Icons.help_outline, color: Colors.cyanAccent),
             tooltip: 'كيف يعمل التطبيق؟',
-            onPressed: _showHelpDialog,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const HelpScreen()),
+              );
+            },
           ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.cyanAccent),
@@ -1143,3 +1115,74 @@ class RadarGridPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+class HelpScreen extends StatelessWidget {
+  const HelpScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF0A0E17),
+      appBar: AppBar(
+        title: const Text('كيف يعمل التطبيق؟', style: TextStyle(color: Colors.cyanAccent)),
+        backgroundColor: Colors.transparent,
+        iconTheme: const IconThemeData(color: Colors.cyanAccent),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Icon(Icons.shield_moon, color: Colors.cyanAccent, size: 80),
+          const SizedBox(height: 20),
+          const Text(
+            'مرحباً بك في تطبيق الناصح',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 30),
+          _buildHelpItem('1️⃣', 'تشغيل الأجهزة', 'تأكد من تشغيل البلوتوث وخدمة الموقع (GPS) في هاتفك.'),
+          _buildHelpItem('2️⃣', 'الرادار', 'سيقوم التطبيق بالبحث تلقائياً عن المستخدمين الآخرين القريبين منك وعرضهم على الشاشة.'),
+          _buildHelpItem('3️⃣', 'إرسال الاستغاثة', 'عند وقوع خطر، اضغط على الزر الأحمر "إرسال استغاثة SOS" واكتب رسالتك.'),
+          _buildHelpItem('4️⃣', 'شبكة الطوارئ (Mesh)', 'حتى لو كنت بعيداً عن الشخص، سيقوم التطبيق بتمرير الرسالة من هاتف إلى هاتف حتى تصل إليه.'),
+          _buildHelpItem('5️⃣', 'بدون إنترنت', 'التطبيق لا يحتاج إلى شبكة إنترنت أو أبراج اتصال ليعمل إطلاقاً.'),
+          const SizedBox(height: 40),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.cyanAccent,
+              padding: const EdgeInsets.symmetric(vertical: 15),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              SharedPreferences.getInstance().then((prefs) => prefs.setBool('showInstructions', false));
+            },
+            child: const Text('فهمت، العودة للرادار', style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildHelpItem(String number, String title, String description) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(number, style: const TextStyle(fontSize: 24)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(color: Colors.cyanAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 5),
+                Text(description, style: const TextStyle(color: Colors.white70, fontSize: 14, height: 1.5)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+  
