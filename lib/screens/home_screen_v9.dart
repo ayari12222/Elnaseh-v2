@@ -8,7 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart';
-import 'upload_screen.dart';
+import '../upload_screen.dart';
 import 'login_screen.dart'; // لضمان العودة عند تسجيل الخروج
 
 class HomeScreenV9 extends StatefulWidget {
@@ -22,13 +22,13 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   int _currentIndex = 0;
   String _selectedCategory = 'الكل';
   final PageController _pageController = PageController();
-  
+
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
+
   List<String> _dynamicCategories = ['الكل'];
   bool _isAdmin = false;
 
@@ -42,7 +42,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   Future<void> _checkAdminStatus() async {
     User? user = _auth.currentUser;
     if (user != null) {
-      DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
+      DocumentSnapshot doc =
+          await _firestore.collection('users').doc(user.uid).get();
       if (doc.exists && doc.get('role') == 'admin') {
         setState(() => _isAdmin = true);
       }
@@ -51,7 +52,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
 
   Future<void> _fetchCategories() async {
     try {
-      QuerySnapshot snapshot = await _firestore.collection('categories').orderBy('createdAt').get();
+      QuerySnapshot snapshot =
+          await _firestore.collection('categories').orderBy('createdAt').get();
       List<String> fetchedCats = ['الكل'];
       for (var doc in snapshot.docs) {
         fetchedCats.add(doc['name']);
@@ -67,40 +69,50 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   // --- دوال SOS ---
   Future<bool> _showPermissionDialog() async {
     return await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Row(
-          children: [
-            Icon(Icons.flash_on, color: Colors.amber, size: 30),
-            SizedBox(width: 10),
-            Text('تفعيل الفلاش للطوارئ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        content: const Text(
-          'لتشغيل الفلاش تلقائياً في حالات الطوارئ، يرجى السماح للتطبيق بالوصول إلى الكاميرا.\n\n'
-          'هذا الإذن يُطلب مرة واحدة فقط ولن يتم استخدامه إلا لتشغيل الفلاش.',
-          style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('لاحقاً', style: TextStyle(color: Colors.grey)),
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            backgroundColor: const Color(0xFF1E1E1E),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+            title: const Row(
+              children: [
+                Icon(Icons.flash_on, color: Colors.amber, size: 30),
+                SizedBox(width: 10),
+                Text('تفعيل الفلاش للطوارئ',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            content: const Text(
+              'لتشغيل الفلاش تلقائياً في حالات الطوارئ، يرجى السماح للتطبيق بالوصول إلى الكاميرا.\n\n'
+              'هذا الإذن يُطلب مرة واحدة فقط ولن يتم استخدامه إلا لتشغيل الفلاش.',
+              style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child:
+                    const Text('لاحقاً', style: TextStyle(color: Colors.grey)),
+              ),
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
+                onPressed: () => Navigator.pop(context, true),
+                child:
+                    const Text('السماح', style: TextStyle(color: Colors.white)),
+              ),
+            ],
           ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('السماح', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    ) ?? false;
+        ) ??
+        false;
   }
 
   Future<void> _toggleSos() async {
-    try { HapticFeedback.vibrate(); } catch (e) { debugPrint("$e"); }
+    try {
+      HapticFeedback.vibrate();
+    } catch (e) {
+      debugPrint("$e");
+    }
 
     if (!_isSosActive) {
       var status = await Permission.camera.status;
@@ -114,18 +126,41 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       }
 
       if (status.isGranted) {
-        try { await TorchLight.enableTorch(); } catch (e) { debugPrint("$e"); }
-        try { await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3')); } catch (e) { debugPrint("$e"); }
+        try {
+          await TorchLight.enableTorch();
+        } catch (e) {
+          debugPrint("$e");
+        }
+        try {
+          await _audioPlayer.play(UrlSource(
+              'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'));
+        } catch (e) {
+          debugPrint("$e");
+        }
         setState(() => _isSosActive = true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('تم رفض إذن الكاميرا. لا يمكن تشغيل الفلاش.'), backgroundColor: Colors.redAccent),
+          const SnackBar(
+              content: Text('تم رفض إذن الكاميرا. لا يمكن تشغيل الفلاش.'),
+              backgroundColor: Colors.redAccent),
         );
       }
     } else {
-      try { await TorchLight.disableTorch(); } catch (e) { debugPrint("$e"); }
-      try { await _audioPlayer.stop(); } catch (e) { debugPrint("$e"); }
-      try { HapticFeedback.vibrate(); } catch (e) { debugPrint("$e"); }
+      try {
+        await TorchLight.disableTorch();
+      } catch (e) {
+        debugPrint("$e");
+      }
+      try {
+        await _audioPlayer.stop();
+      } catch (e) {
+        debugPrint("$e");
+      }
+      try {
+        HapticFeedback.vibrate();
+      } catch (e) {
+        debugPrint("$e");
+      }
       setState(() => _isSosActive = false);
     }
   }
@@ -137,7 +172,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('إضافة ناشر جديد', style: TextStyle(color: Colors.white)),
+        title: const Text('إضافة ناشر جديد',
+            style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
           style: const TextStyle(color: Colors.white),
@@ -147,11 +183,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()), 
-            child: const Text('إضافة')
-          ),
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('إضافة')),
         ],
       ),
     );
@@ -159,11 +196,16 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     if (result != null && result.isNotEmpty) {
       try {
         // البحث عن المستخدم بالبريد الإلكتروني في Firestore
-        QuerySnapshot query = await _firestore.collection('users').where('email', isEqualTo: result).get();
-        
+        QuerySnapshot query = await _firestore
+            .collection('users')
+            .where('email', isEqualTo: result)
+            .get();
+
         if (query.docs.isEmpty) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('المستخدم غير موجود. يجب أن يسجل أولاً.'), backgroundColor: Colors.red));
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('المستخدم غير موجود. يجب أن يسجل أولاً.'),
+                backgroundColor: Colors.red));
           }
           return;
         }
@@ -171,13 +213,16 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         // تحديث دور المستخدم إلى مدير (ناشر)
         String uid = query.docs.first.id;
         await _firestore.collection('users').doc(uid).update({'role': 'admin'});
-        
+
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تمت إضافة الناشر بنجاح'), backgroundColor: Colors.green));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('✅ تمت إضافة الناشر بنجاح'),
+              backgroundColor: Colors.green));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ فشل: $e'), backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('❌ فشل: $e'), backgroundColor: Colors.red));
         }
       }
     }
@@ -199,13 +244,17 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               _showAddPublisherDialog(); // فتح نافذة إضافة ناشر
             } else if (value == 'LOGOUT') {
               _auth.signOut();
-              Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+              Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                      builder: (context) => const LoginScreen()));
             } else {
               setState(() => _selectedCategory = value);
             }
           },
           itemBuilder: (context) {
-            List<PopupMenuEntry<String>> items = _dynamicCategories.map((String category) {
+            List<PopupMenuEntry<String>> items =
+                _dynamicCategories.map((String category) {
               return PopupMenuItem<String>(value: category, child: Text(category));
             }).toList();
 
@@ -218,7 +267,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                     children: [
                       Icon(Icons.add, color: Colors.greenAccent),
                       SizedBox(width: 8),
-                      Text('إضافة تصنيف جديد', style: TextStyle(color: Colors.greenAccent)),
+                      Text('إضافة تصنيف جديد',
+                          style: TextStyle(color: Colors.greenAccent)),
                     ],
                   ),
                 ),
@@ -230,7 +280,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                     children: [
                       Icon(Icons.person_add, color: Colors.blueAccent),
                       SizedBox(width: 8),
-                      Text('إدارة الناشرين', style: TextStyle(color: Colors.blueAccent)),
+                      Text('إدارة الناشرين',
+                          style: TextStyle(color: Colors.blueAccent)),
                     ],
                   ),
                 ),
@@ -243,7 +294,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                     children: [
                       Icon(Icons.logout, color: Colors.redAccent),
                       SizedBox(width: 8),
-                      Text('تسجيل الخروج', style: TextStyle(color: Colors.redAccent)),
+                      Text('تسجيل الخروج',
+                          style: TextStyle(color: Colors.redAccent)),
                     ],
                   ),
                 ),
@@ -260,15 +312,18 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             _buildCircleIcon(Icons.warning, Colors.redAccent, _toggleSos),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.radar, Colors.white, () {
-              Navigator.push(context, MaterialPageRoute(builder: (context) => const RadarScreen()));
+              Navigator.push(context,
+                  MaterialPageRoute(builder: (context) => const RadarScreen()));
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(FontAwesomeIcons.bluetoothB, Colors.blue, () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('البلوتوث قيد التطوير...')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('البلوتوث قيد التطوير...')));
             }),
             const SizedBox(width: 8),
             _buildCircleIcon(Icons.notifications, Colors.white, () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الإشعارات قيد التطوير...')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('الإشعارات قيد التطوير...')));
             }),
           ],
         ),
@@ -276,7 +331,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert, color: Colors.white),
             onSelected: (String value) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$value قيد التطوير...')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('$value قيد التطوير...')));
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'الإعدادات', child: Text('الإعدادات')),
@@ -302,14 +358,24 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         children: [
           StreamBuilder<QuerySnapshot>(
             stream: _selectedCategory == 'الكل'
-                ? _firestore.collection('posts').orderBy('createdAt', descending: true).snapshots()
-                : _firestore.collection('posts').where('tag', isEqualTo: _selectedCategory).orderBy('createdAt', descending: true).snapshots(),
+                ? _firestore
+                    .collection('posts')
+                    .orderBy('createdAt', descending: true)
+                    .snapshots()
+                : _firestore
+                    .collection('posts')
+                    .where('tag', isEqualTo: _selectedCategory)
+                    .orderBy('createdAt', descending: true)
+                    .snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator(color: Colors.cyanAccent));
+                return const Center(
+                    child: CircularProgressIndicator(color: Colors.cyanAccent));
               }
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                return const Center(child: Text('لا توجد منشورات حالياً', style: TextStyle(color: Colors.white)));
+                return const Center(
+                    child: Text('لا توجد منشورات حالياً',
+                        style: TextStyle(color: Colors.white)));
               }
               var posts = snapshot.data!.docs;
               return PageView.builder(
@@ -331,7 +397,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                 mini: true,
                 backgroundColor: Colors.blueAccent,
                 onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const UploadScreen()));
+                  Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => UploadScreen()));
                 },
                 child: const Icon(Icons.add, color: Colors.white),
               ),
@@ -343,7 +412,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             child: Center(
               child: FloatingActionButton(
                 onPressed: _toggleSos,
-                backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F),
+                backgroundColor:
+                    _isSosActive ? Colors.green : const Color(0xFFD32F2F),
                 elevation: 10,
                 child: Container(
                   width: 70,
@@ -351,19 +421,30 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
-                      colors: _isSosActive ? [Colors.greenAccent, Colors.green] : [Colors.redAccent, const Color(0xFFB71C1C)],
+                      colors: _isSosActive
+                          ? [Colors.greenAccent, Colors.green]
+                          : [Colors.redAccent, const Color(0xFFB71C1C)],
                       center: Alignment.center,
                       radius: 0.8,
                     ),
                     boxShadow: [
-                      BoxShadow(color: _isSosActive ? Colors.green.withOpacity(0.6) : Colors.red.withOpacity(0.6), blurRadius: 20, spreadRadius: 5),
+                      BoxShadow(
+                          color: _isSosActive
+                              ? Colors.green.withOpacity(0.6)
+                              : Colors.red.withOpacity(0.6),
+                          blurRadius: 20,
+                          spreadRadius: 5),
                     ],
                     border: Border.all(color: Colors.white, width: 2),
                   ),
                   child: Center(
                     child: Text(
                       _isSosActive ? 'إيقاف' : 'SOS',
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 20, letterSpacing: 1.5),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          fontSize: 20,
+                          letterSpacing: 1.5),
                     ),
                   ),
                 ),
@@ -381,7 +462,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('إضافة تصنيف جديد', style: TextStyle(color: Colors.white)),
+        title: const Text('إضافة تصنيف جديد',
+            style: TextStyle(color: Colors.white)),
         content: TextField(
           controller: controller,
           style: const TextStyle(color: Colors.white),
@@ -391,8 +473,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
-          ElevatedButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('إضافة')),
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('إلغاء', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('إضافة')),
         ],
       ),
     );
@@ -405,9 +491,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           'createdBy': _auth.currentUser?.uid,
         });
         _fetchCategories();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('تم إضافة التصنيف: $result')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('تم إضافة التصنيف: $result')));
       } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الإضافة: $e'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('فشل الإضافة: $e'), backgroundColor: Colors.red));
       }
     }
   }
@@ -426,7 +514,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
           border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
           boxShadow: [
-            BoxShadow(color: color.withOpacity(0.4), blurRadius: 10, spreadRadius: 1, offset: const Offset(0, 4)),
+            BoxShadow(
+                color: color.withOpacity(0.4),
+                blurRadius: 10,
+                spreadRadius: 1,
+                offset: const Offset(0, 4)),
           ],
         ),
         child: Icon(icon, color: Colors.white, size: 22),
@@ -444,12 +536,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) => Container(
               color: Colors.black,
-              child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
+              child: const Center(
+                  child: Icon(Icons.image, size: 80, color: Colors.grey)),
             ),
           )
         else
           Container(color: Colors.black),
-
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -459,7 +551,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             ),
           ),
         ),
-
         Positioned(
           bottom: 20,
           left: 16,
@@ -470,33 +561,42 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: post['tag'] == 'عاجل' ? Colors.red : (post['tag'] == 'معلومات' ? Colors.blue : Colors.orange),
+                  color: post['tag'] == 'عاجل'
+                      ? Colors.red
+                      : (post['tag'] == 'معلومات' ? Colors.blue : Colors.orange),
                   borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(post['tag'] ?? 'عام', style: const TextStyle(color: Colors.white, fontSize: 12)),
+                child: Text(post['tag'] ?? 'عام',
+                    style: const TextStyle(color: Colors.white, fontSize: 12)),
               ),
               const SizedBox(height: 8),
               Row(
                 children: [
-                  Text(post['sender'] ?? 'مجهول', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                  Text(post['sender'] ?? 'مجهول',
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18)),
                   const SizedBox(width: 4),
                   const Icon(Icons.verified, color: Colors.blue, size: 20),
                 ],
               ),
               const SizedBox(height: 8),
-              Text(post['text'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 16)),
+              Text(post['text'] ?? '',
+                  style: const TextStyle(color: Colors.white, fontSize: 16)),
             ],
           ),
         ),
-
         Positioned(
           bottom: 20,
           right: 16,
           child: Column(
             children: [
-              _buildActionButton(Icons.favorite, (post['likes'] ?? 0).toString(), Colors.red),
+              _buildActionButton(
+                  Icons.favorite, (post['likes'] ?? 0).toString(), Colors.red),
               const SizedBox(height: 16),
-              _buildActionButton(Icons.comment, (post['comments'] ?? 0).toString(), Colors.white),
+              _buildActionButton(Icons.comment,
+                  (post['comments'] ?? 0).toString(), Colors.white),
               const SizedBox(height: 16),
               GestureDetector(
                 onTap: () => Share.share(post['text'] ?? ''),
