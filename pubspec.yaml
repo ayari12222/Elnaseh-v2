@@ -31,6 +31,12 @@ dependencies:
   path: ^1.9.0
   crypto: ^3.0.3
 
+  # ✅ إضافات المنصة الإعلامية (Firebase)
+  firebase_core: ^2.24.0
+  cloud_firestore: ^4.13.0
+  firebase_auth: ^4.15.0
+  image_picker: ^1.0.7
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
