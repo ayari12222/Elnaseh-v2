@@ -733,7 +733,7 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            ..._messageLog.reversed.map<SosMessage>((m) { // <-- الإصلاح الحاسم هنا
+            ..._messageLog.reversed.map((m) { // <-- تم إصلاح الخطأ هنا
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text(
