@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "143749781278",
+    "project_id": "ayari-c9aa9",
+    "storage_bucket": "ayari-c9aa9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:143749781278:android:8d3b7afba1e0f84d2cdb0f",
+        "android_client_info": {
+          "package_name": "com.example.elnaseh_app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCTZQb8cggfeIa00KcutSGJsPAeWTLxGKs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
