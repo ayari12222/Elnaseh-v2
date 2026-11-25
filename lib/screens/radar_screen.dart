@@ -733,7 +733,7 @@ class _RadarScreenState extends State<RadarScreen>
               ),
             )
           else
-            ..._messageLog.reversed.map<SosMessage>((m) {  // <--- الإصلاح هنا
+            ..._messageLog.reversed.map<SosMessage>((m) { // <-- الإصلاح الحاسم هنا
               return ListTile(
                 leading: const Icon(Icons.warning, color: Colors.redAccent),
                 title: Text(
@@ -1184,5 +1184,3 @@ class HelpScreen extends StatelessWidget {
     );
   }
 }
-
-  
