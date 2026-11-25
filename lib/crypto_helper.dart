@@ -36,15 +36,81 @@ class CryptoHelper {
   }
 }
 
+// نموذج الرسالة القديم (تم الإبقاء عليه للتوافق مع قاعدة البيانات)
+class SosMessage {
+  final String id;
+  final String sender;
+  final int ttl;
+  final String content;
+  final int timestampMs;
+  final String type;
+  final String? ackFor;
+  final double? lat;
+  final double? lng;
+
+  SosMessage({
+    required this.id,
+    required this.sender,
+    required this.ttl,
+    required this.content,
+    required this.timestampMs,
+    required this.type,
+    this.ackFor,
+    this.lat,
+    this.lng,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'sender': sender,
+        'ttl': ttl,
+        'content': content,
+        'timestampMs': timestampMs,
+        'type': type,
+        if (ackFor != null) 'ackFor': ackFor,
+        if (lat != null) 'lat': lat,
+        if (lng != null) 'lng': lng,
+      };
+
+  factory SosMessage.fromJson(Map<String, dynamic> j) => SosMessage(
+        id: j['id'] as String,
+        sender: j['sender'] as String,
+        ttl: j['ttl'] as int,
+        content: j['content'] as String,
+        timestampMs: j['timestampMs'] as int,
+        type: j['type'] as String,
+        ackFor: j['ackFor'] as String?,
+        lat: j['lat'] != null ? (j['lat'] as num).toDouble() : null,
+        lng: j['lng'] != null ? (j['lng'] as num).toDouble() : null,
+      );
+
+  String encode(String key) => CryptoHelper.encrypt(jsonEncode(toJson()), key);
+
+  static SosMessage? tryDecode(String s, String key) {
+    try {
+      final plain = CryptoHelper.decrypt(s, key);
+      if (plain == null) return null;
+      return SosMessage.fromJson(jsonDecode(plain) as Map<String, dynamic>);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool isExpired({Duration maxAge = const Duration(minutes: 30)}) {
+    return DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(timestampMs)) > maxAge;
+  }
+}
+
+// كلاس MeshPacket الجديد (المسؤول عن التوجيه في الشبكة)
 class MeshPacket {
   final String messageId;
   final String senderId;
   final String senderName;
-  final String targetId; // معرف الجهاز المستهدف، أو "ALL" للبث
+  final String targetId; 
   final int ttl;
-  final String type; // SOS, ACK, CHAT
+  final String type; 
   final int timestampMs;
-  final String encryptedPayload; // المحتوى المشفر
+  final String encryptedPayload; 
   final double? lat;
   final double? lng;
 
