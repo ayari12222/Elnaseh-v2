@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart'; // ✅ إضافة Firebase
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mesh_network/flutter_mesh_network.dart';
 import 'screens/home_screen_v9.dart';
@@ -9,14 +10,17 @@ late final MeshNetwork meshNetwork;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. تهيئة Supabase (للدردشة والمواقع)
+  // ✅ 1. تهيئة Firebase (يجب أن تكون قبل runApp)
+  await Firebase.initializeApp();
+
+  // 2. تهيئة Supabase (للدردشة والمواقع)
   // ⚠️ استبدل الرابط والمفتاح بالقيم الحقيقية من لوحة تحكم Supabase
   await Supabase.initialize(
     url: 'YOUR_SUPABASE_URL',
     anonKey: 'YOUR_SUPABASE_ANON_KEY',
   );
 
-  // 2. تهيئة شبكة Mesh (روح التطبيق - SOS)
+  // 3. تهيئة شبكة Mesh (روح التطبيق - SOS)
   meshNetwork = MeshNetwork(
     config: const MeshConfig(serviceName: 'elnaseh-sos'),
   );
@@ -27,7 +31,7 @@ void main() async {
     userName: 'مستخدم_${DateTime.now().millisecondsSinceEpoch % 1000}',
   );
 
-  // 3. الاستماع للرسائل الواردة (لميزة SOS)
+  // 4. الاستماع للرسائل الواردة (لميزة SOS)
   meshNetwork.onMessage.listen((msg) {
     debugPrint('📩 رسالة من ${msg.senderName}: ${msg.payload}');
     // لاحقاً: سنضيف إشعاراً هنا عندما تكون الرسالة من نوع SOS
