@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // ✅ إضافة Firebase
+// import 'package:firebase_core/firebase_core.dart'; // ✅ تم التعطيل مؤقتاً
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_mesh_network/flutter_mesh_network.dart';
 import 'screens/home_screen_v9.dart';
@@ -10,11 +10,10 @@ late final MeshNetwork meshNetwork;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ 1. تهيئة Firebase (يجب أن تكون قبل runApp)
-  await Firebase.initializeApp();
+  // ✅ 1. تم تعطيل Firebase مؤقتاً لمعرفة سبب الشاشة البيضاء
+  // await Firebase.initializeApp();
 
   // 2. تهيئة Supabase (للدردشة والمواقع)
-  // ⚠️ استبدل الرابط والمفتاح بالقيم الحقيقية من لوحة تحكم Supabase
   await Supabase.initialize(
     url: 'YOUR_SUPABASE_URL',
     anonKey: 'YOUR_SUPABASE_ANON_KEY',
@@ -34,7 +33,6 @@ void main() async {
   // 4. الاستماع للرسائل الواردة (لميزة SOS)
   meshNetwork.onMessage.listen((msg) {
     debugPrint('📩 رسالة من ${msg.senderName}: ${msg.payload}');
-    // لاحقاً: سنضيف إشعاراً هنا عندما تكون الرسالة من نوع SOS
   });
 
   runApp(const MyApp());
