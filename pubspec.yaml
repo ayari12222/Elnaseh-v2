@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # المكتبات الأصلية (لم نمسها)
+  # المكتبات الأصلية
   audioplayers: ^6.0.0
   torch_light: ^1.1.0
   share_plus: ^7.2.0
@@ -22,8 +22,8 @@ dependencies:
   nearby_connections: ^4.3.0
   geolocator: ^12.0.0
   url_launcher: ^6.3.0
-  flutter_blue_plus: ^2.2.1         
-  flutter_mesh_network: ^0.1.3      
+  flutter_blue_plus: ^2.2.1
+  flutter_mesh_network: ^0.1.3
   encrypt: ^5.0.3
 
   # المكتبات الجديدة (لقاعدة البيانات والـ Mesh)
@@ -31,27 +31,27 @@ dependencies:
   path: ^1.9.0
   crypto: ^3.0.3
 
-  # ✅ إضافات المنصة الإعلامية (Firebase)
+  # إضافات المنصة الإعلامية (Firebase)
   firebase_core: ^2.24.0
   cloud_firestore: ^4.13.0
   firebase_auth: ^4.15.0
   image_picker: ^1.0.7
-  firebase_storage: ^11.5.0         # ✅ لرفع الصور
+  firebase_storage: ^11.5.0
   
-  # ✅ إضافات استوديو النشر (Post Studio)
-  screenshot: ^2.1.0                # ✅ لتحويل التصميم إلى صورة
-  google_fonts: ^6.1.0              # ✅ لخطوط عربية احترافية
-  flutter_colorpicker: ^1.0.3       # ✅ لاختيار الألوان
+  # إضافات استوديو النشر (Post Studio)
+  screenshot: ^2.1.0
+  google_fonts: ^6.1.0
+  flutter_colorpicker: ^1.0.3   # ✅ الحزمة التي نحتاجها لاختيار الألوان
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
 
-# لحل تعارض حزمة path
+# لحل تعارضات المكتبات
 dependency_overrides:
   path: ^1.9.1
-  screenshot: ^3.0.0  # ✅ تمت إضافة هذا السطر لحل مشكلة الخطأ في GitHub Actions
+  screenshot: ^3.0.0            # ✅ لحل مشكلة الخطأ السابق في بناء التطبيق
 
 flutter:
   uses-material-design: true
