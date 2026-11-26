@@ -28,7 +28,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isAdmin = false;
   final String _adminCode = "ELNASEH2026";
 
-  // ✅ تم إصلاح نوع البيانات هنا
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
@@ -112,7 +111,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
-  // ✅ تم إصلاح نوع البيانات هنا
   List<Map<String, dynamic>> get _filteredPosts {
     if (_selectedCategory == 'الكل') return _allPosts;
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
@@ -297,6 +295,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
+  
   Widget _buildCircleIcon(IconData icon, Color color, VoidCallback onPressed) {
     return GestureDetector(
       onTap: onPressed,
@@ -304,9 +303,20 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, 
+            end: Alignment.bottomRight, 
+            colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]
+          ),
           border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10, spreadRadius: 1, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.4), 
+              blurRadius: 10, 
+              spreadRadius: 1, 
+              offset: const Offset(0, 4)
+            )
+          ],
         ),
         child: Icon(icon, color: Colors.white, size: 22),
       ),
@@ -318,6 +328,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // 1. الصورة
           if (post['type'] == 'image' && post['image'].isNotEmpty)
             Image.network(
               post['image'], 
@@ -330,6 +341,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           else
             Container(color: Colors.black),
 
+          // 2. النصوص (العلوية والسفلية)
           Positioned(
             top: 60, 
             left: 16,
@@ -341,10 +353,17 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                   Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(8)
+                    ),
                     child: Text(
                       post['topText'],
-                      style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.black, 
+                        fontSize: 20, 
+                        fontWeight: FontWeight.bold
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -352,10 +371,17 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                 if (post['bottomText'] != null && post['bottomText'].toString().isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(8)
+                    ),
                     child: Text(
                       post['bottomText'],
-                      style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.black, 
+                        fontSize: 18, 
+                        fontWeight: FontWeight.bold
+                      ),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -363,15 +389,29 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             ),
           ),
 
+          // 3. أزرار التفاعل الاحترافية
           Positioned(
             bottom: 20, 
             right: 16,
             child: Column(
               children: [
-                _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
+                // زر الإعجاب
+                GestureDetector(
+                  onTap: () async {
+                    await FirebaseFirestore.instance.collection('announcements').doc(post['id']).update({
+                      'likes': (post['likes'] ?? 0) + 1,
+                    });
+                    setState(() {});
+                  },
+                  child: _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
+                ),
                 const SizedBox(height: 16),
+                
+                // زر التعليق
                 _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
                 const SizedBox(height: 16),
+                
+                // زر المشاركة
                 GestureDetector(
                   onTap: () => Share.share(post['topText'] ?? ''),
                   child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
@@ -384,12 +424,41 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
+  // ✅ الأزرار الاحترافية (مع الظل والتأثير ثلاثي الأبعاد)
   Widget _buildActionButton(IconData icon, String label, Color color) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 32),
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 35,
+            shadows: [
+              Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 5),
+            ],
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white, 
+            fontSize: 13, 
+            fontWeight: FontWeight.bold,
+            shadows: [Shadow(color: Colors.black, blurRadius: 5)],
+          ),
+        ),
       ],
     );
   }
