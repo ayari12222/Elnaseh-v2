@@ -2,7 +2,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
-    id "com.google.gms.google-services" // ✅ إضافة Firebase plugin
+    // ❌ تم حذف سطر Firebase من هنا لأنه يسبب الخطأ
 }
 
 android {
@@ -22,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "com.example.elnaseh_app"
         minSdk = 26
-        targetSdk = 35 // ✅ تم التعديل ليتوافق مع Firebase
+        targetSdk = 35
         versionCode = 1
         versionName = "1.0"
     }
@@ -47,3 +47,6 @@ repositories {
     google()
     mavenCentral()
 }
+
+// ✅ إضافة Firebase بالطريقة الكلاسيكية في نهاية الملف
+apply plugin: 'com.google.gms.google-services'
