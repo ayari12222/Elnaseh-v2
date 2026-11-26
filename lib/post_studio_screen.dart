@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // ✅ لدعم Clipboard
+import 'package:flutter/services.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -21,25 +21,43 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   File? _selectedImage;
   final ScreenshotController _screenshotController = ScreenshotController();
   
-  // ✅ متحكم النص لدعم اللصق والتعديل
-  final TextEditingController _textController = TextEditingController();
+  final TextEditingController _topTextController = TextEditingController();
+  final TextEditingController _bottomTextController = TextEditingController();
 
-  String _text = '';
-  Color _textColor = Colors.white;
-  double _fontSize = 24.0;
+  String _topText = '';
+  String _bottomText = '';
+  
+  Color _topTextColor = Colors.white;
+  double _topFontSize = 24.0;
+  Offset _topTextPosition = const Offset(50, 150);
+
+  Color _bottomTextColor = Colors.black;
+  double _bottomFontSize = 20.0;
+  Offset _bottomTextPosition = const Offset(50, 600);
+  Color _bottomBoxColor = Colors.white;
+  double _bottomBoxOpacity = 1.0;
+
   String _selectedFont = 'Cairo';
-  Offset _textPosition = const Offset(50, 400);
-  
   final List<String> _fonts = ['Cairo', 'Tajawal', 'Almarai', 'Changa', 'Amiri'];
-  
+
+  List<Map<String, dynamic>> _stickers = [];
   bool _isUploading = false;
 
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() => _selectedImage = File(image.path));
-    }
+    if (image != null) setState(() => _selectedImage = File(image.path));
+  }
+
+  void _addSticker(String stickerType) {
+    setState(() {
+      _stickers.add({
+        'id': DateTime.now().millisecondsSinceEpoch.toString(),
+        'type': stickerType,
+        'position': const Offset(100, 300),
+        'scale': 1.0,
+      });
+    });
   }
 
   Future<void> _saveToGallery() async {
@@ -47,29 +65,13 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       final Uint8List? imageBytes = await _screenshotController.capture();
       if (imageBytes != null) {
         await ImageGallerySaverPlus.saveImage(imageBytes, name: 'elnaseh_post');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('✅ تم حفظ التصميم في المعرض!'), backgroundColor: Colors.green),
-          );
-        }
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم حفظ التصميم في المعرض!'), backgroundColor: Colors.green));
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل الحفظ: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
+    } catch (e) { debugPrint(e.toString()); }
   }
 
   Future<void> _publishPost() async {
-    if (_selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('الرجاء اختيار صورة أولاً'), backgroundColor: Colors.red),
-      );
-      return;
-    }
-
+    if (_selectedImage == null) return;
     setState(() => _isUploading = true);
     try {
       final Uint8List? imageBytes = await _screenshotController.capture();
@@ -80,53 +82,35 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       await storageRef.putData(imageBytes);
       final String downloadUrl = await storageRef.getDownloadURL();
 
-      await FirebaseFirestore.instance.collection('posts').add({
-        'title': 'منشور جديد',
-        'content': _text.isEmpty ? 'تصميم جديد من الناصح' : _text,
-        'imageUrl': downloadUrl,
+      await FirebaseFirestore.instance.collection('announcements').add({
+        'title': _topText.isEmpty ? 'منشور جديد' : _topText,
+        'content': _bottomText.isEmpty ? 'تصميم جديد' : _bottomText,
+        'image_url': downloadUrl,
         'tag': 'معلومات',
-        'sender': 'الدفاع المدني',
         'likes': 0,
         'comments': 0,
-        'timestamp': FieldValue.serverTimestamp(),
+        'created_at': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم النشر بنجاح!'), backgroundColor: Colors.green),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم النشر بنجاح!'), backgroundColor: Colors.green));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('فشل النشر: $e'), backgroundColor: Colors.red),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e'), backgroundColor: Colors.red));
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
   }
 
-  void _showColorPicker() {
+  void _showColorPicker({required Function(Color) onColorChanged, required Color currentColor}) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('اختر لون النص', style: TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: _textColor,
-            onColorChanged: (color) => setState(() => _textColor = color),
-            pickerAreaHeightPercent: 0.7,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('حسناً', style: TextStyle(color: Colors.cyanAccent)),
-          ),
-        ],
+        title: const Text('اختر اللون', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(child: ColorPicker(pickerColor: currentColor, onColorChanged: onColorChanged, pickerAreaHeightPercent: 0.7)),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('حسناً', style: TextStyle(color: Colors.cyanAccent)))],
       ),
     );
   }
@@ -136,27 +120,15 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E17),
       appBar: AppBar(
-        title: const Text('استوديو النشر', style: TextStyle(color: Colors.cyanAccent)),
+        title: const Text('استوديو النشر الاحترافي', style: TextStyle(color: Colors.cyanAccent)),
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.save, color: Colors.greenAccent),
-            tooltip: 'حفظ في المعرض',
-            onPressed: _selectedImage != null ? _saveToGallery : null,
-          ),
-          IconButton(
-            icon: _isUploading 
-                ? const CircularProgressIndicator(color: Colors.cyanAccent) 
-                : const Icon(Icons.send, color: Colors.cyanAccent),
-            tooltip: 'نشر',
-            onPressed: _isUploading ? null : _publishPost,
-          ),
+          IconButton(icon: const Icon(Icons.save, color: Colors.greenAccent), onPressed: _selectedImage != null ? _saveToGallery : null),
+          IconButton(icon: _isUploading ? const CircularProgressIndicator(color: Colors.cyanAccent) : const Icon(Icons.send, color: Colors.cyanAccent), onPressed: _isUploading ? null : _publishPost),
         ],
       ),
-      body: _selectedImage == null 
-          ? _buildImagePickerView() 
-          : _buildStudioView(),
+      body: _selectedImage == null ? _buildImagePickerView() : _buildStudioView(),
     );
   }
 
@@ -170,10 +142,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
           const Text('اختر صورة للبدء في التصميم', style: TextStyle(color: Colors.white, fontSize: 18)),
           const SizedBox(height: 20),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.cyanAccent,
-              padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15),
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)),
             onPressed: _pickImage,
             icon: const Icon(Icons.photo_library, color: Colors.black),
             label: const Text('اختيار من المعرض', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
@@ -193,113 +162,117 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
               color: Colors.black,
               child: Stack(
                 children: [
-                  Positioned.fill(
-                    child: Image.file(_selectedImage!, fit: BoxFit.cover),
-                  ),
-                  Positioned(
-                    left: _textPosition.dx,
-                    top: _textPosition.dy,
-                    child: GestureDetector(
-                      onPanUpdate: (details) {
-                        setState(() {
-                          _textPosition = Offset(
-                            _textPosition.dx + details.delta.dx,
-                            _textPosition.dy + details.delta.dy,
-                          );
-                        });
-                      },
-                      child: Text(
-                        _text.isEmpty ? 'اكتب النص هنا...' : _text,
-                        style: GoogleFonts.getFont(
-                          _selectedFont,
-                          color: _textColor,
-                          fontSize: _fontSize,
-                          fontWeight: FontWeight.bold,
-                          shadows: [const Shadow(color: Colors.black, blurRadius: 10)],
+                  Positioned.fill(child: Image.file(_selectedImage!, fit: BoxFit.cover)),
+                  
+                  // النص العلوي
+                  if (_topText.isNotEmpty)
+                    Positioned(
+                      left: _topTextPosition.dx, top: _topTextPosition.dy,
+                      child: GestureDetector(
+                        onPanUpdate: (details) => setState(() => _topTextPosition += details.delta),
+                        child: Text(
+                          _topText,
+                          style: GoogleFonts.getFont(_selectedFont, color: _topTextColor, fontSize: _topFontSize, fontWeight: FontWeight.bold, shadows: [const Shadow(color: Colors.black, blurRadius: 10)]),
                         ),
                       ),
                     ),
-                  ),
+                  
+                  // النص السفلي مع الصندوق
+                  if (_bottomText.isNotEmpty)
+                    Positioned(
+                      left: _bottomTextPosition.dx, top: _bottomTextPosition.dy,
+                      child: GestureDetector(
+                        onPanUpdate: (details) => setState(() => _bottomTextPosition += details.delta),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                          decoration: BoxDecoration(color: _bottomBoxColor.withOpacity(_bottomBoxOpacity), borderRadius: BorderRadius.circular(8)),
+                          child: Text(_bottomText, style: GoogleFonts.getFont(_selectedFont, color: _bottomTextColor, fontSize: _bottomFontSize, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ),
+                  
+                  // الملصقات
+                  ..._stickers.map((sticker) {
+                    return Positioned(
+                      left: sticker['position'].dx, top: sticker['position'].dy,
+                      child: GestureDetector(
+                        onPanUpdate: (details) => setState(() => sticker['position'] += details.delta),
+                        child: Transform.scale(
+                          scale: sticker['scale'],
+                          child: Icon(
+                            sticker['type'] == 'sos' ? Icons.sos : sticker['type'] == 'warning' ? Icons.warning_amber_rounded : Icons.info,
+                            color: Colors.redAccent, size: 50,
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ],
               ),
             ),
           ),
         ),
+        
+        // لوحة التحكم السفلية
         Container(
           color: const Color(0xFF1E1E1E),
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            children: [
-              // ✅ حقل النص مع زر اللصق
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _textController,
-                      style: const TextStyle(color: Colors.white),
-                      maxLines: 2,
-                      onChanged: (val) => setState(() => _text = val),
-                      decoration: InputDecoration(
-                        hintText: 'اكتب النص هنا أو الصقه...',
-                        hintStyle: const TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: const Color(0xFF0A0E17),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
+          height: 250,
+          child: DefaultTabController(
+            length: 3,
+            child: Column(
+              children: [
+                const TabBar(labelColor: Colors.cyanAccent, unselectedLabelColor: Colors.grey, tabs: [Tab(text: 'النص'), Tab(text: 'الصندوق'), Tab(text: 'الملصقات')]),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      // تبويب النص
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(child: TextField(controller: _topTextController, style: const TextStyle(color: Colors.white), onChanged: (val) => setState(() => _topText = val), decoration: const InputDecoration(hintText: 'النص العلوي...', hintStyle: TextStyle(color: Colors.grey)))),
+                                IconButton(icon: const Icon(Icons.color_lens, color: Colors.cyanAccent), onPressed: () => _showColorPicker(onColorChanged: (c) => setState(() => _topTextColor = c), currentColor: _topTextColor)),
+                              ],
+                            ),
+                            Row(
+                              children: [
+                                Expanded(child: TextField(controller: _bottomTextController, style: const TextStyle(color: Colors.white), onChanged: (val) => setState(() => _bottomText = val), decoration: const InputDecoration(hintText: 'النص السفلي...', hintStyle: TextStyle(color: Colors.grey)))),
+                                IconButton(icon: const Icon(Icons.color_lens, color: Colors.cyanAccent), onPressed: () => _showColorPicker(onColorChanged: (c) => setState(() => _bottomTextColor = c), currentColor: _bottomTextColor)),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
-                    ),
+                      // تبويب الصندوق
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Row(
+                          children: [
+                            const Text('لون الصندوق:', style: TextStyle(color: Colors.white)),
+                            IconButton(icon: const Icon(Icons.color_lens, color: Colors.cyanAccent), onPressed: () => _showColorPicker(onColorChanged: (c) => setState(() => _bottomBoxColor = c), currentColor: _bottomBoxColor)),
+                            Expanded(child: Slider(value: _bottomBoxOpacity, onChanged: (val) => setState(() => _bottomBoxOpacity = val), activeColor: Colors.cyanAccent)),
+                          ],
+                        ),
+                      ),
+                      // تبويب الملصقات
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Wrap(
+                          spacing: 20,
+                          children: [
+                            IconButton(icon: const Icon(Icons.sos, color: Colors.red, size: 40), onPressed: () => _addSticker('sos')),
+                            IconButton(icon: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 40), onPressed: () => _addSticker('warning')),
+                            IconButton(icon: const Icon(Icons.info, color: Colors.blue, size: 40), onPressed: () => _addSticker('info')),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                  // ✅ زر اللصق السريع
-                  IconButton(
-                    icon: const Icon(Icons.paste, color: Colors.cyanAccent),
-                    tooltip: 'لصق',
-                    onPressed: () async {
-                      final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-                      if (clipboardData != null && clipboardData.text != null) {
-                        setState(() {
-                          _text = clipboardData.text!;
-                          _textController.text = _text;
-                        });
-                      }
-                    },
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.color_lens, color: Colors.cyanAccent),
-                    onPressed: _showColorPicker,
-                  ),
-                  Expanded(
-                    child: Slider(
-                      value: _fontSize,
-                      min: 12,
-                      max: 60,
-                      activeColor: Colors.cyanAccent,
-                      onChanged: (val) => setState(() => _fontSize = val),
-                    ),
-                  ),
-                  DropdownButton<String>(
-                    value: _selectedFont,
-                    dropdownColor: const Color(0xFF0A0E17),
-                    style: const TextStyle(color: Colors.white),
-                    items: _fonts.map((font) => DropdownMenuItem(value: font, child: Text(font))).toList(),
-                    onChanged: (val) => setState(() => _selectedFont = val!),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              TextButton.icon(
-                onPressed: _pickImage,
-                icon: const Icon(Icons.image, color: Colors.orangeAccent),
-                label: const Text('تغيير الصورة', style: TextStyle(color: Colors.orangeAccent)),
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
