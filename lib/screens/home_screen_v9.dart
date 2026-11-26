@@ -5,9 +5,9 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ إضافة Firebase
+// import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ معطل مؤقتاً
 import 'radar_screen.dart'; 
-import 'admin_post_screen.dart'; // ✅ استدعاء شاشة النشر
+import 'admin_post_screen.dart'; // ✅ شاشة النشر
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -25,46 +25,58 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // ✅ متغيرات جلب المنشورات من Firebase
+  // ✅ بيانات محلية تجريبية (بدلاً من Firebase)
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchPosts(); // جلب المنشورات عند فتح التطبيق
+    _fetchPosts(); // جلب البيانات المحلية
   }
 
-  // ✅ دالة جلب المنشورات
+  // ✅ دالة جلب المنشورات المحلية
   Future<void> _fetchPosts() async {
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('posts')
-          .orderBy('timestamp', descending: true) // الأحدث أولاً
-          .get();
-
-      if (mounted) {
-        setState(() {
-          _allPosts = snapshot.docs.map((doc) {
-            final data = doc.data();
-            return {
-              'id': doc.id,
-              'image': data['image'] ?? '',
-              'text': data['text'] ?? '',
-              'sender': data['sender'] ?? 'الإدارة',
-              'tag': data['tag'] ?? 'معلومات',
-              'tagColor': data['tagColor'] ?? 'blue',
-              'likes': data['likes'] ?? 0,
-              'comments': data['comments'] ?? 0,
-              'type': data['type'] ?? 'text',
-            };
-          }).toList();
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      debugPrint("خطأ في جلب المنشورات: $e");
-      if (mounted) setState(() => _isLoading = false);
+    await Future.delayed(const Duration(milliseconds: 500)); // محاكاة التحميل
+    if (mounted) {
+      setState(() {
+        _allPosts = [
+          {
+            'id': '1',
+            'image': 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
+            'text': 'تحذير: زلزال بقوة 6.5 درجة يضرب المنطقة. يرجى التوجه إلى المناطق المفتوحة.',
+            'sender': 'الدفاع المدني',
+            'tag': 'عاجل',
+            'tagColor': 'red',
+            'likes': 1250,
+            'comments': 45,
+            'type': 'image',
+          },
+          {
+            'id': '2',
+            'image': 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800',
+            'text': 'إرشادات السلامة: حافظ على الهدوء، وابتعد عن النوافذ والأجسام المتساقطة.',
+            'sender': 'الهلال الأحمر',
+            'tag': 'معلومات',
+            'tagColor': 'blue',
+            'likes': 890,
+            'comments': 12,
+            'type': 'image',
+          },
+          {
+            'id': '3',
+            'image': '',
+            'text': 'تنبيه: سيتم قطع المياه عن المنطقة الشرقية لمدة 3 ساعات.',
+            'sender': 'شركة المياه',
+            'tag': 'تحذير',
+            'tagColor': 'orange',
+            'likes': 340,
+            'comments': 5,
+            'type': 'text',
+          },
+        ];
+        _isLoading = false;
+      });
     }
   }
 
@@ -176,7 +188,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh, color: Colors.white),
-            onPressed: _fetchPosts, // ✅ زر لتحديث المنشورات يدوياً
+            onPressed: () {
+               setState(() => _isLoading = true);
+               _fetchPosts();
+            }, 
           ),
         ],
       ),
@@ -194,7 +209,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       ),
       body: Stack(
         children: [
-          // ✅ شاشة التحميل أو المنشورات
           if (_isLoading)
             const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
           else if (_filteredPosts.isEmpty)
@@ -207,7 +221,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               itemBuilder: (context, index) => _buildPost(_filteredPosts[index]),
             ),
           
-          // زر SOS
           Positioned(
             left: 20, top: 0, bottom: 0,
             child: Center(
@@ -261,7 +274,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     return Stack(
       fit: StackFit.expand,
       children: [
-        // عرض الصورة إذا وجدت
         if (post['type'] == 'image' && post['image'].isNotEmpty)
           Image.network(
             post['image'], fit: BoxFit.cover,
@@ -273,14 +285,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         else
           Container(color: Colors.black),
 
-        // تدرج لوني أسود في الأسفل لقراءة النص
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.center, colors: [Colors.black.withOpacity(0.8), Colors.transparent]),
           ),
         ),
 
-        // النصوص والتفاصيل
         Positioned(
           bottom: 20, left: 16, right: 80,
           child: Column(
@@ -308,7 +318,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
         ),
 
-        // أزرار التفاعل (إعجاب، تعليق، مشاركة)
         Positioned(
           bottom: 20, right: 16,
           child: Column(
