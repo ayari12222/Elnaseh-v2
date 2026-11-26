@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 // import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ معطل مؤقتاً
 import 'radar_screen.dart'; 
-import 'admin_post_screen.dart'; // ✅ شاشة النشر
+import 'admin_post_screen.dart'; 
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -25,29 +25,26 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // ✅ بيانات محلية تجريبية (بدلاً من Firebase)
+  // ✅ بيانات محلية تجريبية للتصميم الجديد
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchPosts(); // جلب البيانات المحلية
+    _fetchPosts(); 
   }
 
-  // ✅ دالة جلب المنشورات المحلية
   Future<void> _fetchPosts() async {
-    await Future.delayed(const Duration(milliseconds: 500)); // محاكاة التحميل
+    await Future.delayed(const Duration(milliseconds: 500)); 
     if (mounted) {
       setState(() {
         _allPosts = [
           {
             'id': '1',
             'image': 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
-            'text': 'تحذير: زلزال بقوة 6.5 درجة يضرب المنطقة. يرجى التوجه إلى المناطق المفتوحة.',
-            'sender': 'الدفاع المدني',
-            'tag': 'عاجل',
-            'tagColor': 'red',
+            'topText': 'مبروك تطبيق الناصح للتواصل عند الطوارئ...',
+            'bottomText': 'بناءً على تقييمكم سيتم تطوير التطبيق',
             'likes': 1250,
             'comments': 45,
             'type': 'image',
@@ -55,24 +52,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           {
             'id': '2',
             'image': 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800',
-            'text': 'إرشادات السلامة: حافظ على الهدوء، وابتعد عن النوافذ والأجسام المتساقطة.',
-            'sender': 'الهلال الأحمر',
-            'tag': 'معلومات',
-            'tagColor': 'blue',
+            'topText': 'إرشادات السلامة: حافظ على الهدوء',
+            'bottomText': 'وابتعد عن النوافذ والأجسام المتساقطة.',
             'likes': 890,
             'comments': 12,
             'type': 'image',
-          },
-          {
-            'id': '3',
-            'image': '',
-            'text': 'تنبيه: سيتم قطع المياه عن المنطقة الشرقية لمدة 3 ساعات.',
-            'sender': 'شركة المياه',
-            'tag': 'تحذير',
-            'tagColor': 'orange',
-            'likes': 340,
-            'comments': 5,
-            'type': 'text',
           },
         ];
         _isLoading = false;
@@ -159,7 +143,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             return PopupMenuItem<String>(value: category, child: Text(category));
           }).toList(),
         ),
-        // ✅ الزر السري: ضغطة مطولة على الشعار لفتح شاشة النشر
         title: GestureDetector(
           onLongPress: () {
             Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminPostScreen()));
@@ -271,69 +254,92 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Widget _buildPost(Map<String, dynamic> post) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (post['type'] == 'image' && post['image'].isNotEmpty)
-          Image.network(
-            post['image'], fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) => Container(
-              color: Colors.black,
-              child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
+    return SizedBox.expand( // ✅ يضمن ملء الشاشة
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. الصورة (تملأ الشاشة بالكامل)
+          if (post['type'] == 'image' && post['image'].isNotEmpty)
+            Image.network(
+              post['image'], 
+              fit: BoxFit.cover, // ✅ تملأ الشاشة
+              errorBuilder: (context, error, stackTrace) => Container(
+                color: Colors.black,
+                child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
+              ),
+            )
+          else
+            Container(color: Colors.black),
+
+          // 2. النصوص العلوية (فوق الصورة)
+          Positioned(
+            top: 60, 
+            left: 16,
+            right: 80, 
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // النص العلوي
+                if (post['topText'] != null && post['topText'].toString().isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      post['topText'],
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                
+                // النص السفلي
+                if (post['bottomText'] != null && post['bottomText'].toString().isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      post['bottomText'],
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+              ],
             ),
-          )
-        else
-          Container(color: Colors.black),
-
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.center, colors: [Colors.black.withOpacity(0.8), Colors.transparent]),
           ),
-        ),
 
-        Positioned(
-          bottom: 20, left: 16, right: 80,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: post['tagColor'] == 'red' ? Colors.red : (post['tagColor'] == 'blue' ? Colors.blue : Colors.orange),
-                  borderRadius: BorderRadius.circular(4),
+          // 3. أزرار التفاعل
+          Positioned(
+            bottom: 20, 
+            right: 16,
+            child: Column(
+              children: [
+                _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
+                const SizedBox(height: 16),
+                _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
+                const SizedBox(height: 16),
+                GestureDetector(
+                  onTap: () => Share.share(post['topText'] ?? ''),
+                  child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
                 ),
-                child: Text(post['tag'], style: const TextStyle(color: Colors.white, fontSize: 12)),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Text(post['sender'], style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.verified, color: Colors.blue, size: 20),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(post['text'], style: const TextStyle(color: Colors.white, fontSize: 16)),
-            ],
+              ],
+            ),
           ),
-        ),
-
-        Positioned(
-          bottom: 20, right: 16,
-          child: Column(
-            children: [
-              _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.red),
-              const SizedBox(height: 16),
-              _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
-              const SizedBox(height: 16),
-              GestureDetector(
-                onTap: () => Share.share(post['text']),
-                child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
-              ),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
