@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart'; 
-import '../post_studio_screen.dart'; // ✅ استيراد استوديو النشر الجديد[span_4](start_span)[span_4](end_span)[span_5](start_span)[span_5](end_span)[span_6](start_span)[span_6](end_span)[span_7](start_span)[span_7](end_span)
+import '../post_studio_screen.dart'; // ✅ استيراد استوديو النشر الجديد[span_10](start_span)[span_10](end_span)[span_11](start_span)[span_11](end_span)
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
