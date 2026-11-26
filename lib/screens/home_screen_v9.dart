@@ -5,7 +5,7 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
-// import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ معطل مؤقتاً
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart'; 
 import 'admin_post_screen.dart'; 
 
@@ -25,7 +25,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // ✅ بيانات محلية تجريبية للتصميم الجديد
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
@@ -36,31 +35,40 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Future<void> _fetchPosts() async {
-    await Future.delayed(const Duration(milliseconds: 500)); 
-    if (mounted) {
-      setState(() {
-        _allPosts = [
-          {
-            'id': '1',
-            'image': 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
-            'topText': 'مبروك تطبيق الناصح للتواصل عند الطوارئ...',
-            'bottomText': 'بناءً على تقييمكم سيتم تطوير التطبيق',
-            'likes': 1250,
-            'comments': 45,
-            'type': 'image',
-          },
-          {
-            'id': '2',
-            'image': 'https://images.unsplash.com/photo-1547683905-f686c993aae5?w=800',
-            'topText': 'إرشادات السلامة: حافظ على الهدوء',
-            'bottomText': 'وابتعد عن النوافذ والأجسام المتساقطة.',
-            'likes': 890,
-            'comments': 12,
-            'type': 'image',
-          },
-        ];
-        _isLoading = false;
-      });
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('announcements')
+          .orderBy('created_at', descending: true)
+          .get();
+
+      final fetchedPosts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'image': data['image_url'] ?? 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
+          'topText': data['title'] ?? '',
+          'bottomText': data['content'] ?? '',
+          'likes': data['likes'] ?? 0,
+          'comments': data['comments'] ?? 0,
+          'type': 'image',
+          'tag': data['tag'] ?? 'الكل',
+        };
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          _allPosts = fetchedPosts;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error fetching posts: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل تحميل المنشورات: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -254,15 +262,14 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Widget _buildPost(Map<String, dynamic> post) {
-    return SizedBox.expand( // ✅ يضمن ملء الشاشة
+    return SizedBox.expand(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. الصورة (تملأ الشاشة بالكامل)
           if (post['type'] == 'image' && post['image'].isNotEmpty)
             Image.network(
               post['image'], 
-              fit: BoxFit.cover, // ✅ تملأ الشاشة
+              fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) => Container(
                 color: Colors.black,
                 child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
@@ -271,7 +278,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           else
             Container(color: Colors.black),
 
-          // 2. النصوص العلوية (فوق الصورة)
           Positioned(
             top: 60, 
             left: 16,
@@ -279,41 +285,25 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // النص العلوي
                 if (post['topText'] != null && post['topText'].toString().isNotEmpty)
                   Container(
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
                     child: Text(
                       post['topText'],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                   ),
                 
-                // النص السفلي
                 if (post['bottomText'] != null && post['bottomText'].toString().isNotEmpty)
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
                     child: Text(
                       post['bottomText'],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -321,7 +311,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             ),
           ),
 
-          // 3. أزرار التفاعل
           Positioned(
             bottom: 20, 
             right: 16,
