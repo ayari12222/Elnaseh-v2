@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -16,7 +14,6 @@ class _AdminPostScreenState extends State<AdminPostScreen> {
   final TextEditingController _senderController = TextEditingController();
   
   String _selectedTag = 'عاجل';
-  String _selectedTagColor = 'red';
   bool _isLoading = false;
   
   File? _selectedImage;
@@ -41,41 +38,16 @@ class _AdminPostScreenState extends State<AdminPostScreen> {
 
     setState(() => _isLoading = true);
 
-    try {
-      // 1. تسجيل الدخول كمسؤول
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: 'admin@elnaseh.com', // ✏️ غير الإيميل إلى إيميلك
-        password: 'YOUR_STRONG_PASSWORD', // ✏️ غير كلمة السر إلى كلمتك
+    // محاكاة عملية النشر (لأن Firebase معطل مؤقتاً)
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم النشر تجريبياً (Firebase معطل)'), backgroundColor: Colors.green),
       );
-
-      // 2. رفع المنشور
-      await FirebaseFirestore.instance.collection('posts').add({
-        'text': _textController.text.trim(),
-        'sender': _senderController.text.trim(),
-        'tag': _selectedTag,
-        'tagColor': _selectedTagColor,
-        'image': '',
-        'type': 'text',
-        'likes': 0,
-        'comments': 0,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم نشر المنشور بنجاح!'), backgroundColor: Colors.green),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ خطأ: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      Navigator.pop(context);
     }
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -107,6 +79,7 @@ class _AdminPostScreenState extends State<AdminPostScreen> {
               ),
             ),
             const SizedBox(height: 16),
+            
             const Text('اسم الجهة المرسلة:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextField(
@@ -121,6 +94,23 @@ class _AdminPostScreenState extends State<AdminPostScreen> {
               ),
             ),
             const SizedBox(height: 16),
+
+            // زر اختيار الصورة (يعمل الآن)
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: _pickImage,
+                  icon: const Icon(Icons.image, color: Colors.white),
+                  label: const Text('اختيار صورة', style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
+                ),
+                const SizedBox(width: 10),
+                if (_selectedImage != null)
+                  const Icon(Icons.check_circle, color: Colors.green),
+              ],
+            ),
+            const SizedBox(height: 16),
+
             const Text('التصنيف:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
@@ -138,7 +128,6 @@ class _AdminPostScreenState extends State<AdminPostScreen> {
               onChanged: (val) {
                 setState(() {
                   _selectedTag = val!;
-                  _selectedTagColor = val == 'عاجل' ? 'red' : (val == 'تحذير' ? 'orange' : 'blue');
                 });
               },
             ),
