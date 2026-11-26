@@ -2,6 +2,7 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services" // ✅ إضافة Firebase plugin
 }
 
 android {
@@ -21,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "com.example.elnaseh_app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35 // ✅ تم التعديل ليتوافق مع Firebase
         versionCode = 1
         versionName = "1.0"
     }
