@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart'; 
-import '../post_studio_screen.dart'; // ✅ استيراد استوديو النشر الجديد[span_10](start_span)[span_10](end_span)[span_11](start_span)[span_11](end_span)
+import '../post_studio_screen.dart'; 
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -25,11 +25,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  // ✅ متغيرات التحكم بالصلاحيات
   bool _isAdmin = false;
-  final String _adminCode = "ELNASEH2026"; // الرمز السري للناشرين
+  final String _adminCode = "ELNASEH2026";
 
-  List> _allPosts = [];
+  // ✅ تم إصلاح نوع البيانات هنا
+  List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
   @override
@@ -38,7 +38,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     _fetchPosts(); 
   }
 
-  // دالة جلب المنشورات
   Future<void> _fetchPosts() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -77,7 +76,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     }
   }
 
-  // ✅ دالة دخول الناشرين
   void _showAdminLoginDialog() {
     final controller = TextEditingController();
     showDialog(
@@ -114,7 +112,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
-  List> get _filteredPosts {
+  // ✅ تم إصلاح نوع البيانات هنا
+  List<Map<String, dynamic>> get _filteredPosts {
     if (_selectedCategory == 'الكل') return _allPosts;
     return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
   }
@@ -194,7 +193,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           }).toList(),
         ),
         title: GestureDetector(
-          onLongPress: _showAdminLoginDialog, // ✅ الضغط المطول يفتح نافذة الدخول
+          onLongPress: _showAdminLoginDialog,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -281,7 +280,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             ),
           ),
 
-          // ✅ زر النشر (+) يظهر فقط للمدير
           if (_isAdmin)
             Positioned(
               bottom: 30,
@@ -289,7 +287,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               child: FloatingActionButton(
                 backgroundColor: Colors.cyanAccent,
                 onPressed: () {
-                  // ✅ الانتقال المباشر لاستوديو النشر
                   Navigator.push(context, MaterialPageRoute(builder: (context) => const PostStudioScreen()));
                 },
                 child: const Icon(Icons.add, color: Colors.black, size: 30),
