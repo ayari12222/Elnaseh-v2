@@ -10,7 +10,7 @@ dependencies:
   flutter:
     sdk: flutter
   
-  # المكتبات الأصلية
+  # المكتبات الأصلية (لم نمسها)
   audioplayers: ^6.0.0
   torch_light: ^1.1.0
   share_plus: ^7.2.0
@@ -22,8 +22,8 @@ dependencies:
   nearby_connections: ^4.3.0
   geolocator: ^12.0.0
   url_launcher: ^6.3.0
-  flutter_blue_plus: ^2.2.1
-  flutter_mesh_network: ^0.1.3
+  flutter_blue_plus: ^2.2.1         # ✅ تمت إعادتها
+  flutter_mesh_network: ^0.1.3      # ✅ تمت إعادتها
   encrypt: ^5.0.3
 
   # المكتبات الجديدة (لقاعدة البيانات والـ Mesh)
@@ -36,6 +36,12 @@ dependencies:
   cloud_firestore: ^4.13.0
   firebase_auth: ^4.15.0
   image_picker: ^1.0.7
+  firebase_storage: ^11.5.0         # ✅ لرفع الصور
+  
+  # ✅ إضافات استوديو النشر (Post Studio)
+  screenshot: ^2.1.0                # ✅ لتحويل التصميم إلى صورة
+  google_fonts: ^6.1.0              # ✅ لخطوط عربية احترافية
+  flutter_colorpicker: ^1.0.3       # ✅ لاختيار الألوان
 
 dev_dependencies:
   flutter_test:
