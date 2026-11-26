@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-// import 'package:firebase_core/firebase_core.dart'; // ✅ معطل مؤقتاً
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:firebase_core/firebase_core.dart'; 
 import 'package:flutter_mesh_network/flutter_mesh_network.dart';
 import 'screens/home_screen_v9.dart';
 
@@ -9,13 +8,12 @@ late final MeshNetwork meshNetwork;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ✅ تم تعطيل Firebase مؤقتاً
-  // await Firebase.initializeApp();
-
-  await Supabase.initialize(
-    url: 'YOUR_SUPABASE_URL',
-    anonKey: 'YOUR_SUPABASE_ANON_KEY',
-  );
+  try {
+    await Firebase.initializeApp();
+    debugPrint('✅ Firebase initialized successfully');
+  } catch (e) {
+    debugPrint('❌ Firebase initialization error: $e');
+  }
 
   meshNetwork = MeshNetwork(
     config: const MeshConfig(serviceName: 'elnaseh-sos'),
