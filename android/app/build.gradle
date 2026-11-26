@@ -2,7 +2,8 @@ plugins {
     id "com.android.application"
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
-    // ❌ تم حذف سطر Firebase من هنا لأنه يسبب الخطأ
+    // ✅ تعريف إضافة Google Services (بدون تفعيلها هنا)
+    id "com.google.gms.google-services" version "4.4.2" apply false
 }
 
 android {
@@ -48,5 +49,5 @@ repositories {
     mavenCentral()
 }
 
-// ✅ إضافة Firebase بالطريقة الكلاسيكية في نهاية الملف
+// ✅ تفعيل الإضافة في النهاية
 apply plugin: 'com.google.gms.google-services'
