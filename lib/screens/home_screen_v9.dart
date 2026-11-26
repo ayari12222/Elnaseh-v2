@@ -5,9 +5,10 @@ import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // ✅ Firebase
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:video_player/video_player.dart'; // ✅ مكتبة الفيديو
 import 'radar_screen.dart'; 
-import 'admin_post_screen.dart'; 
+import '../post_studio_screen.dart'; // ✅ شاشة النشر الخاصة بك
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -25,6 +26,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  bool _isAdmin = false;
+  final String _adminCode = "ELNASEH2026";
+
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
@@ -34,35 +38,79 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     _fetchPosts(); 
   }
 
-  // ✅ دالة جلب المنشورات من Firebase
   Future<void> _fetchPosts() async {
     try {
       final snapshot = await FirebaseFirestore.instance
-          .collection('posts')
-          .orderBy('timestamp', descending: true)
+          .collection('announcements')
+          .orderBy('created_at', descending: true)
           .get();
+
+      final fetchedPosts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'image': data['image_url'] ?? 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
+          'videoUrl': data['video_url'] ?? '', // ✅ دعم الفيديو
+          'topText': data['title'] ?? '',
+          'bottomText': data['content'] ?? '',
+          'likes': data['likes'] ?? 0,
+          'comments': data['comments'] ?? 0,
+          'type': data['type'] ?? 'image', // 'image' أو 'video'
+          'tag': data['tag'] ?? 'الكل',
+        };
+      }).toList();
 
       if (mounted) {
         setState(() {
-          _allPosts = snapshot.docs.map((doc) {
-            final data = doc.data();
-            return {
-              'id': doc.id,
-              'image': data['image'] ?? '',
-              'topText': data['topText'] ?? '',
-              'bottomText': data['bottomText'] ?? '',
-              'likes': data['likes'] ?? 0,
-              'comments': data['comments'] ?? 0,
-              'type': data['type'] ?? 'text',
-            };
-          }).toList();
+          _allPosts = fetchedPosts;
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint("خطأ في جلب المنشورات: $e");
-      if (mounted) setState(() => _isLoading = false);
+      debugPrint('Error fetching posts: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('فشل تحميل المنشورات: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
+  }
+
+  void _showAdminLoginDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('🔐 دخول الناشرين', style: TextStyle(color: Colors.cyanAccent)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(hintText: 'أدخل الرمز السري'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim() == _adminCode) {
+                setState(() => _isAdmin = true);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('✅ تم تفعيل وضع النشر!'), backgroundColor: Colors.green),
+                );
+              } else {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('❌ رمز خاطئ!'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text('دخول'),
+          ),
+        ],
+      ),
+    );
   }
 
   List<Map<String, dynamic>> get _filteredPosts {
@@ -145,9 +193,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           }).toList(),
         ),
         title: GestureDetector(
-          onLongPress: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminPostScreen()));
-          },
+          onLongPress: _showAdminLoginDialog,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -233,6 +279,19 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               ),
             ),
           ),
+
+          if (_isAdmin)
+            Positioned(
+              bottom: 30,
+              right: 20,
+              child: FloatingActionButton(
+                backgroundColor: Colors.cyanAccent,
+                onPressed: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PostStudioScreen()));
+                },
+                child: const Icon(Icons.add, color: Colors.black, size: 30),
+              ),
+            ),
         ],
       ),
     );
@@ -245,9 +304,20 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, 
+            end: Alignment.bottomRight, 
+            colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]
+          ),
           border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-          boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10, spreadRadius: 1, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.4), 
+              blurRadius: 10, 
+              spreadRadius: 1, 
+              offset: const Offset(0, 4)
+            )
+          ],
         ),
         child: Icon(icon, color: Colors.white, size: 22),
       ),
@@ -259,7 +329,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (post['type'] == 'image' && post['image'].isNotEmpty)
+          // ✅ 1. عرض الفيديو أو الصورة
+          if (post['type'] == 'video' && post['videoUrl'].isNotEmpty)
+            _VideoPlayerWidget(videoUrl: post['videoUrl'])
+          else if (post['type'] == 'image' && post['image'].isNotEmpty)
             Image.network(
               post['image'], 
               fit: BoxFit.cover,
@@ -271,6 +344,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           else
             Container(color: Colors.black),
 
+          // ✅ 2. النصوص
           Positioned(
             top: 60, 
             left: 16,
@@ -283,16 +357,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                     margin: const EdgeInsets.only(bottom: 10),
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(8)
                     ),
                     child: Text(
                       post['topText'],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -301,16 +371,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.white, 
+                      borderRadius: BorderRadius.circular(8)
                     ),
                     child: Text(
                       post['bottomText'],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
                   ),
@@ -318,15 +384,38 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             ),
           ),
 
+          // ✅ 3. أزرار التفاعل (إعجاب حقيقي، تعليق، مشاركة)
           Positioned(
             bottom: 20, 
             right: 16,
             child: Column(
               children: [
-                _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
+                // زر الإعجاب (يتحدث مباشرة في Firebase)
+                GestureDetector(
+                  onTap: () async {
+                    try {
+                      await FirebaseFirestore.instance.collection('announcements').doc(post['id']).update({
+                        'likes': (post['likes'] ?? 0) + 1,
+                      });
+                      setState(() {
+                        final index = _allPosts.indexWhere((p) => p['id'] == post['id']);
+                        if (index != -1) {
+                          _allPosts[index]['likes'] = (post['likes'] ?? 0) + 1;
+                        }
+                      });
+                    } catch (e) {
+                      debugPrint("خطأ في الإعجاب: $e");
+                    }
+                  },
+                  child: _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
+                ),
                 const SizedBox(height: 16),
+                
+                // زر التعليق
                 _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
                 const SizedBox(height: 16),
+                
+                // زر المشاركة
                 GestureDetector(
                   onTap: () => Share.share(post['topText'] ?? ''),
                   child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
@@ -342,10 +431,86 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   Widget _buildActionButton(IconData icon, String label, Color color) {
     return Column(
       children: [
-        Icon(icon, color: color, size: 32),
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 35,
+            shadows: [
+              Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 5),
+            ],
+          ),
+        ),
         const SizedBox(height: 4),
-        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white, 
+            fontSize: 13, 
+            fontWeight: FontWeight.bold,
+            shadows: [Shadow(color: Colors.black, blurRadius: 5)],
+          ),
+        ),
       ],
+    );
+  }
+}
+
+// ✅ ويدجت تشغيل الفيديو
+class _VideoPlayerWidget extends StatefulWidget {
+  final String videoUrl;
+  const _VideoPlayerWidget({required this.videoUrl});
+
+  @override
+  State<_VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
+      ..initialize().then((_) {
+        setState(() => _isInitialized = true);
+        _controller.setLooping(true);
+        _controller.play();
+      });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isInitialized) {
+      return const Center(child: CircularProgressIndicator(color: Colors.white));
+    }
+    return SizedBox.expand(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: _controller.value.size.width,
+          height: _controller.value.size.height,
+          child: VideoPlayer(_controller),
+        ),
+      ),
     );
   }
 }
