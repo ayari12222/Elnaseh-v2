@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart'; 
-import 'admin_post_screen.dart'; 
+import 'post_studio_screen.dart'; // ✅ استيراد استوديو النشر الجديد
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -25,6 +25,10 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   bool _isSosActive = false;
   final AudioPlayer _audioPlayer = AudioPlayer();
 
+  // ✅ متغيرات التحكم بالصلاحيات
+  bool _isAdmin = false;
+  final String _adminCode = "ELNASEH2026"; // الرمز السري للناشرين
+
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
 
@@ -34,6 +38,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     _fetchPosts(); 
   }
 
+  // دالة جلب المنشورات
   Future<void> _fetchPosts() async {
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -70,6 +75,43 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         );
       }
     }
+  }
+
+  // ✅ دالة دخول الناشرين
+  void _showAdminLoginDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('🔐 دخول الناشرين', style: TextStyle(color: Colors.cyanAccent)),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(hintText: 'أدخل الرمز السري'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim() == _adminCode) {
+                setState(() => _isAdmin = true);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('✅ تم تفعيل وضع النشر!'), backgroundColor: Colors.green),
+                );
+              } else {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('❌ رمز خاطئ!'), backgroundColor: Colors.red),
+                );
+              }
+            },
+            child: const Text('دخول'),
+          ),
+        ],
+      ),
+    );
   }
 
   List<Map<String, dynamic>> get _filteredPosts {
@@ -152,9 +194,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           }).toList(),
         ),
         title: GestureDetector(
-          onLongPress: () {
-            Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminPostScreen()));
-          },
+          onLongPress: _showAdminLoginDialog, // ✅ الضغط المطول يفتح نافذة الدخول
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
@@ -240,6 +280,21 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               ),
             ),
           ),
+
+          // ✅ زر النشر (+) يظهر فقط للمدير
+          if (_isAdmin)
+            Positioned(
+              bottom: 30,
+              right: 20,
+              child: FloatingActionButton(
+                backgroundColor: Colors.cyanAccent,
+                onPressed: () {
+                  // ✅ الانتقال المباشر لاستوديو النشر
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PostStudioScreen()));
+                },
+                child: const Icon(Icons.add, color: Colors.black, size: 30),
+              ),
+            ),
         ],
       ),
     );
