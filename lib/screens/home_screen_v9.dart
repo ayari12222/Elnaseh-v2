@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart'; 
-import '../post_studio_screen.dart'; 
+import 'admin_post_screen.dart'; // ✅ تم تغيير الاستدعاء إلى AdminPostScreen
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -53,7 +53,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           'bottomText': data['content'] ?? '',
           'likes': data['likes'] ?? 0,
           'comments': data['comments'] ?? 0,
-          'type': 'image',
+          'type': data['type'] ?? 'image', // ✅ تحسين بسيط لقراءة النوع
           'tag': data['tag'] ?? 'الكل',
         };
       }).toList();
@@ -285,7 +285,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               child: FloatingActionButton(
                 backgroundColor: Colors.cyanAccent,
                 onPressed: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const PostStudioScreen()));
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminPostScreen())); // ✅ تم تغييرها هنا
                 },
                 child: const Icon(Icons.add, color: Colors.black, size: 30),
               ),
@@ -327,7 +327,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (post['image'].isNotEmpty)
+          if (post['type'] == 'image' && post['image'].isNotEmpty)
             Image.network(
               post['image'], 
               fit: BoxFit.cover,
