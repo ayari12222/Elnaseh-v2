@@ -1,12 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 
 class UploadScreen extends StatefulWidget {
-  const UploadScreen({super.key});
+  // نمرر دالة الحفظ من الشاشة الرئيسية
+  final Function(Map<String, dynamic> post) onPostAdded;
+
+  const UploadScreen({super.key, required this.onPostAdded});
 
   @override
   State<UploadScreen> createState() => _UploadScreenState();
@@ -19,28 +19,8 @@ class _UploadScreenState extends State<UploadScreen> {
   String _selectedCategory = 'عاجل';
   bool _isUploading = false;
 
-  List<String> _availableCategories = ['عاجل', 'معلومات', 'تحذير'];
-
-  @override
-  void initState() {
-    super.initState();
-    _fetchCategories();
-  }
-
-  Future<void> _fetchCategories() async {
-    try {
-      QuerySnapshot snapshot = await FirebaseFirestore.instance.collection('categories').get();
-      List<String> cats = [];
-      for (var doc in snapshot.docs) {
-        cats.add(doc['name']);
-      }
-      if (cats.isNotEmpty) {
-        setState(() => _availableCategories = cats);
-      }
-    } catch (e) {
-      print("Error fetching categories: $e");
-    }
-  }
+  // تصنيفات ثابتة (لأننا لا نستخدم Firebase)
+  final List<String> _availableCategories = ['عاجل', 'معلومات', 'تحذير'];
 
   Future<void> _pickImage(ImageSource source) async {
     final XFile? pickedFile = await _picker.pickImage(source: source, imageQuality: 80);
@@ -51,7 +31,7 @@ class _UploadScreenState extends State<UploadScreen> {
     }
   }
 
-  Future<void> _uploadPost() async {
+  void _publishPost() {
     if (_imageFile == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('الرجاء اختيار صورة أولاً'), backgroundColor: Colors.red),
@@ -65,43 +45,21 @@ class _UploadScreenState extends State<UploadScreen> {
       return;
     }
 
-    setState(() => _isUploading = true);
+    // إنشاء بيانات المنشور وإرسالها للشاشة الرئيسية
+    final newPost = {
+      'text': _textController.text.trim(),
+      'sender': 'الناصح الرسمي',
+      'tag': _selectedCategory,
+      'tagColor': 'red', 
+      'likes': 0,
+      'comments': 0,
+      'imagePath': _imageFile!.path,
+      'type': 'image',
+      'createdAt': DateTime.now().toIso8601String(),
+    };
 
-    try {
-      String fileName = DateTime.now().millisecondsSinceEpoch.toString();
-      Reference storageRef = FirebaseStorage.instance.ref().child('images/$fileName.jpg');
-      
-      UploadTask uploadTask = storageRef.putFile(_imageFile!);
-      TaskSnapshot snapshot = await uploadTask;
-      String downloadUrl = await snapshot.ref.getDownloadURL();
-
-      await FirebaseFirestore.instance.collection('posts').add({
-        'imageUrl': downloadUrl,
-        'text': _textController.text.trim(),
-        'sender': 'الناصح الرسمي',
-        'senderId': FirebaseAuth.instance.currentUser?.uid,
-        'tag': _selectedCategory,
-        'likes': 0,
-        'comments': 0,
-        'type': 'image',
-        'createdAt': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ تم نشر المنشور بنجاح'), backgroundColor: Colors.green),
-        );
-        Navigator.pop(context);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ فشل الرفع: $e'), backgroundColor: Colors.red),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
+    widget.onPostAdded(newPost); // استدعاء دالة الحفظ في الشاشة الرئيسية
+    Navigator.pop(context); // العودة للشاشة الرئيسية
   }
 
   @override
@@ -118,7 +76,6 @@ class _UploadScreenState extends State<UploadScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // منطقة اختيار الصورة
             GestureDetector(
               onTap: () {
                 showModalBottomSheet(
@@ -172,13 +129,12 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
             const SizedBox(height: 20),
 
-            // حقل النص
             TextField(
               controller: _textController,
               maxLines: 4,
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: 'اكتب نص المنشور هنا (مثلاً: إرشادات السلامة...)',
+                hintText: 'اكتب نص المنشور هنا...',
                 hintStyle: const TextStyle(color: Colors.grey),
                 filled: true,
                 fillColor: const Color(0xFF1E1E1E),
@@ -187,7 +143,6 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
             const SizedBox(height: 20),
 
-            // اختيار التصنيف
             const Text('اختر التصنيف:', style: TextStyle(color: Colors.white70, fontSize: 16)),
             const SizedBox(height: 8),
             Wrap(
@@ -206,9 +161,8 @@ class _UploadScreenState extends State<UploadScreen> {
             ),
             const SizedBox(height: 30),
 
-            // زر النشر
             ElevatedButton(
-              onPressed: _isUploading ? null : _uploadPost,
+              onPressed: _isUploading ? null : _publishPost,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.redAccent,
                 padding: const EdgeInsets.symmetric(vertical: 16),
