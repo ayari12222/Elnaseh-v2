@@ -32,6 +32,7 @@ class _AdminPostScreenState extends State<AdminPostScreen> {
         'likes': 0,
         'comments': 0,
         'created_at': FieldValue.serverTimestamp(),
+        'type': _imageUrlController.text.trim().isNotEmpty ? 'image' : 'text', // ✅ تمت إضافة هذا السطر
       });
 
       _titleController.clear();
