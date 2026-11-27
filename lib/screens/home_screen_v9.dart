@@ -6,9 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:video_player/video_player.dart'; // ✅ مكتبة الفيديو
 import 'radar_screen.dart'; 
-import '../post_studio_screen.dart'; // ✅ شاشة النشر الخاصة بك
+import '../post_studio_screen.dart'; 
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -50,12 +49,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         return {
           'id': doc.id,
           'image': data['image_url'] ?? 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
-          'videoUrl': data['video_url'] ?? '', // ✅ دعم الفيديو
           'topText': data['title'] ?? '',
           'bottomText': data['content'] ?? '',
           'likes': data['likes'] ?? 0,
           'comments': data['comments'] ?? 0,
-          'type': data['type'] ?? 'image', // 'image' أو 'video'
+          'type': 'image',
           'tag': data['tag'] ?? 'الكل',
         };
       }).toList();
@@ -329,10 +327,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ✅ 1. عرض الفيديو أو الصورة
-          if (post['type'] == 'video' && post['videoUrl'].isNotEmpty)
-            _VideoPlayerWidget(videoUrl: post['videoUrl'])
-          else if (post['type'] == 'image' && post['image'].isNotEmpty)
+          if (post['image'].isNotEmpty)
             Image.network(
               post['image'], 
               fit: BoxFit.cover,
@@ -344,7 +339,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           else
             Container(color: Colors.black),
 
-          // ✅ 2. النصوص
           Positioned(
             top: 60, 
             left: 16,
@@ -384,13 +378,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             ),
           ),
 
-          // ✅ 3. أزرار التفاعل (إعجاب حقيقي، تعليق، مشاركة)
           Positioned(
             bottom: 20, 
             right: 16,
             child: Column(
               children: [
-                // زر الإعجاب (يتحدث مباشرة في Firebase)
                 GestureDetector(
                   onTap: () async {
                     try {
@@ -399,9 +391,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                       });
                       setState(() {
                         final index = _allPosts.indexWhere((p) => p['id'] == post['id']);
-                        if (index != -1) {
-                          _allPosts[index]['likes'] = (post['likes'] ?? 0) + 1;
-                        }
+                        if (index != -1) _allPosts[index]['likes'] = (post['likes'] ?? 0) + 1;
                       });
                     } catch (e) {
                       debugPrint("خطأ في الإعجاب: $e");
@@ -410,12 +400,8 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                   child: _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
                 ),
                 const SizedBox(height: 16),
-                
-                // زر التعليق
                 _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
                 const SizedBox(height: 16),
-                
-                // زر المشاركة
                 GestureDetector(
                   onTap: () => Share.share(post['topText'] ?? ''),
                   child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
@@ -463,54 +449,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           ),
         ),
       ],
-    );
-  }
-}
-
-// ✅ ويدجت تشغيل الفيديو
-class _VideoPlayerWidget extends StatefulWidget {
-  final String videoUrl;
-  const _VideoPlayerWidget({required this.videoUrl});
-
-  @override
-  State<_VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
-}
-
-class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
-  late VideoPlayerController _controller;
-  bool _isInitialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.videoUrl))
-      ..initialize().then((_) {
-        setState(() => _isInitialized = true);
-        _controller.setLooping(true);
-        _controller.play();
-      });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return const Center(child: CircularProgressIndicator(color: Colors.white));
-    }
-    return SizedBox.expand(
-      child: FittedBox(
-        fit: BoxFit.cover,
-        child: SizedBox(
-          width: _controller.value.size.width,
-          height: _controller.value.size.height,
-          child: VideoPlayer(_controller),
-        ),
-      ),
     );
   }
 }
