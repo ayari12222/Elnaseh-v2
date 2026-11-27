@@ -41,17 +41,16 @@ dependencies:
   # إضافات استوديو النشر (Post Studio)
   screenshot: ^2.1.0
   google_fonts: ^6.1.0
-  flutter_colorpicker: ^1.0.3   # ✅ الحزمة التي نحتاجها لاختيار الألوان
+  flutter_colorpicker: ^1.0.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
 
-# لحل تعارضات المكتبات
 dependency_overrides:
   path: ^1.9.1
-  screenshot: ^3.0.0            # ✅ لحل مشكلة الخطأ السابق في بناء التطبيق
+  screenshot: ^3.0.0
 
 flutter:
   uses-material-design: true
