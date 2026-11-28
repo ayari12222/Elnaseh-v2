@@ -8,7 +8,9 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:screenshot/screenshot.dart'; // ✅ لالتقاط الصورة مع النص
 import 'dart:io';
+import 'dart:typed_data';
 import 'radar_screen.dart'; 
 
 class HomeScreenV9 extends StatefulWidget {
@@ -29,16 +31,16 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
 
   bool _isAdmin = false;
   final String _adminCode = "ELNASEH2026";
-  bool _isPublishing = false; // حالة النشر
+  
+  // متغيرات النشر فوق الصورة
+  bool _isPublishing = false;
+  File? _selectedImage;
+  final ImagePicker _picker = ImagePicker();
+  final TextEditingController _textController = TextEditingController();
+  final ScreenshotController _screenshotController = ScreenshotController(); // ✅ أداة التقاط التصميم
 
   List<Map<String, dynamic>> _allPosts = [];
   bool _isLoading = true;
-
-  // متغيرات النشر المدمج
-  File? _selectedImage;
-  final ImagePicker _picker = ImagePicker();
-  final TextEditingController _topTextController = TextEditingController();
-  final TextEditingController _bottomTextController = TextEditingController();
 
   @override
   void initState() {
@@ -98,9 +100,14 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               if (controller.text.trim() == _adminCode) {
                 setState(() => _isAdmin = true);
                 Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('✅ تم تفعيل وضع النشر!'), backgroundColor: Colors.green),
+                );
               } else {
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ رمز خاطئ!'), backgroundColor: Colors.red));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('❌ رمز خاطئ!'), backgroundColor: Colors.red),
+                );
               }
             },
             child: const Text('دخول'),
@@ -119,9 +126,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     try { HapticFeedback.vibrate(); } catch (e) {}
     if (!_isSosActive) {
       var status = await Permission.camera.status;
-      if (!status.isGranted) {
-        status = await Permission.camera.request();
-      }
+      if (!status.isGranted) { status = await Permission.camera.request(); }
       if (status.isGranted) {
         try { await TorchLight.enableTorch(); } catch (e) {}
         try { await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3')); } catch (e) {}
@@ -134,30 +139,38 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     }
   }
 
-  // 🛑 دالة اختيار الصورة والنشر المدمج
-  Future<void> _pickAndPublishImage() async {
+  // 🛑 دالة اختيار الصورة
+  Future<void> _pickImageToPublish() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (image != null) {
       setState(() {
         _selectedImage = File(image.path);
-        _isPublishing = true; // تفعيل وضع الكتابة فوق الصورة
+        _isPublishing = true;
+        _textController.clear(); 
       });
     }
   }
 
+  // 🛑 دالة النشر (تأخذ لقطة للصورة مع النص وترفعها)
   Future<void> _publishPost() async {
     if (_selectedImage == null) return;
-    
     setState(() => _isLoading = true);
+    
     try {
+      // 1. أخذ لقطة للشاشة (الصورة + النص)
+      final Uint8List? imageBytes = await _screenshotController.capture();
+      if (imageBytes == null) throw Exception('فشل التقاط التصميم');
+
+      // 2. رفع الصورة النهائية
       String imageUrl = '';
       final ref = FirebaseStorage.instance.ref().child('announcements/${DateTime.now().millisecondsSinceEpoch}.jpg');
-      await ref.putFile(_selectedImage!);
+      await ref.putData(imageBytes);
       imageUrl = await ref.getDownloadURL();
 
+      // 3. حفظ المنشور في Firebase
       await FirebaseFirestore.instance.collection('announcements').add({
-        'title': _topTextController.text.trim(),
-        'content': _bottomTextController.text.trim(),
+        'title': '', 
+        'content': '', // لا نحتاج نص هنا لأننا أخذنا الصورة كاملة
         'image_url': imageUrl,
         'likes': 0,
         'comments': 0,
@@ -166,14 +179,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         'tag': 'الكل',
       });
 
-      _topTextController.clear();
-      _bottomTextController.clear();
       setState(() {
         _selectedImage = null;
         _isPublishing = false;
       });
       
-      await _fetchPosts(); // تحديث المنشورات
+      await _fetchPosts(); 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم النشر!'), backgroundColor: Colors.green));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red));
@@ -187,7 +198,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     return Scaffold(
       backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
+        backgroundColor: _isPublishing ? Colors.transparent : const Color(0xFF1E1E1E),
         elevation: 0,
         leading: _isPublishing 
             ? IconButton(icon: const Icon(Icons.close, color: Colors.white), onPressed: () => setState(() { _isPublishing = false; _selectedImage = null; }))
@@ -211,6 +222,14 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                     const SizedBox(width: 8),
                     _buildCircleIcon(Icons.radar, Colors.white, () {
                       Navigator.push(context, MaterialPageRoute(builder: (context) => const RadarScreen()));
+                    }),
+                    const SizedBox(width: 8),
+                    _buildCircleIcon(FontAwesomeIcons.bluetoothB, Colors.blue, () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('البلوتوث قيد التطوير...')));
+                    }),
+                    const SizedBox(width: 8),
+                    _buildCircleIcon(Icons.notifications, Colors.white, () {
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الإشعارات قيد التطوير...')));
                     }),
                   ],
                 ),
@@ -245,84 +264,65 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
-  // 🛑 واجهة النشر (الصورة مع الكتابة فوقها)
+  // 🛑 واجهة النشر: الصورة مع الكتابة فوقها مباشرة (بدون صندوق)
   Widget _buildPublishingView() {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // 1. الصورة
-        if (_selectedImage != null)
-          Image.file(_selectedImage!, fit: BoxFit.cover)
-        else
-          Container(color: Colors.black),
+    return Screenshot(
+      controller: _screenshotController,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // الصورة تملأ الشاشة
+          if (_selectedImage != null)
+            Image.file(_selectedImage!, fit: BoxFit.cover)
+          else
+            Container(color: Colors.black),
 
-        // 2. الكتابة فوق الصورة (النص العلوي)
-        Positioned(
-          top: 80, left: 16, right: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+          // الكتابة فوق الصورة مباشرة (نص شفاف يطفو فوق الصورة)
+          Positioned(
+            top: 100, left: 16, right: 16,
             child: TextField(
-              controller: _topTextController,
-              style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold),
+              controller: _textController,
+              maxLines: null,
+              style: const TextStyle(
+                color: Colors.white, // لون النص أبيض ليظهر فوق الصورة
+                fontSize: 24, 
+                fontWeight: FontWeight.bold,
+                shadows: [
+                  Shadow(color: Colors.black, blurRadius: 10, offset: Offset(0, 2)) // ظل ليظهر النص فوق أي صورة
+                ]
+              ),
               textAlign: TextAlign.center,
-              decoration: const InputDecoration(hintText: 'اكتب النص العلوي...', border: InputBorder.none),
+              decoration: const InputDecoration(
+                hintText: 'اكتب هنا...',
+                hintStyle: TextStyle(color: Colors.white70, fontSize: 20),
+                border: InputBorder.none, // لا يوجد إطار
+              ),
             ),
           ),
-        ),
 
-        // 3. الكتابة فوق الصورة (النص السفلي)
-        Positioned(
-          bottom: 150, left: 16, right: 16,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-            child: TextField(
-              controller: _bottomTextController,
-              style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-              decoration: const InputDecoration(hintText: 'اكتب النص السفلي...', border: InputBorder.none),
+          // زر تغيير الصورة
+          Positioned(
+            bottom: 30, left: 20, right: 20,
+            child: ElevatedButton.icon(
+              onPressed: _pickImageToPublish,
+              icon: const Icon(Icons.image),
+              label: const Text('تغيير الصورة'),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.black54),
             ),
           ),
-        ),
-
-        // 4. زر تغيير الصورة
-        Positioned(
-          bottom: 30, left: 20, right: 20,
-          child: ElevatedButton.icon(
-            onPressed: _pickAndPublishImage,
-            icon: const Icon(Icons.image),
-            label: const Text('تغيير الصورة'),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  // 🛑 واجهة العرض الرئيسية (تيك توك)
+  // 🛑 واجهة العرض الرئيسية
   Widget _buildMainView() {
     return Stack(
       children: [
         if (_isLoading)
           const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
         else if (_filteredPosts.isEmpty)
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('لا توجد منشورات حالياً', style: TextStyle(color: Colors.white, fontSize: 18)),
-                if (_isAdmin) ...[
-                  const SizedBox(height: 20),
-                  ElevatedButton.icon(
-                    onPressed: _pickAndPublishImage, 
-                    icon: const Icon(Icons.add), 
-                    label: const Text('إضافة أول منشور')
-                  ),
-                ]
-              ],
-            ),
-          )
+          const Center(child: Text('لا توجد منشورات حالياً', style: TextStyle(color: Colors.white, fontSize: 18)))
         else
           PageView.builder(
             controller: _pageController,
@@ -362,7 +362,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             bottom: 30, right: 20,
             child: FloatingActionButton(
               backgroundColor: Colors.cyanAccent,
-              onPressed: _pickAndPublishImage,
+              onPressed: _pickImageToPublish, 
               child: const Icon(Icons.add, color: Colors.black, size: 30),
             ),
           ),
@@ -395,43 +395,37 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           else
             Container(color: Colors.black),
 
-          Positioned(
-            top: 60, left: 16, right: 80,
-            child: Column(
-              children: [
-                if (post['topText'] != null && post['topText'].toString().isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                    child: Text(post['topText'], style: const TextStyle(color: Colors.black, fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                  ),
-                if (post['bottomText'] != null && post['bottomText'].toString().isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-                    child: Text(post['bottomText'], style: const TextStyle(color: Colors.black, fontSize: 18, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
-                  ),
-              ],
-            ),
-          ),
-
+          // أزرار التفاعل (إعجاب، تعليق، مشاركة)
           Positioned(
             bottom: 20, right: 16,
             child: Column(
               children: [
                 GestureDetector(
                   onTap: () async {
-                    await FirebaseFirestore.instance.collection('announcements').doc(post['id']).update({'likes': (post['likes'] ?? 0) + 1});
-                    setState(() {});
+                    try {
+                      await FirebaseFirestore.instance.collection('announcements').doc(post['id']).update({
+                        'likes': (post['likes'] ?? 0) + 1,
+                      });
+                      setState(() {
+                        final index = _allPosts.indexWhere((p) => p['id'] == post['id']);
+                        if (index != -1) _allPosts[index]['likes'] = (post['likes'] ?? 0) + 1;
+                      });
+                    } catch (e) {
+                      debugPrint("خطأ في الإعجاب: $e");
+                    }
                   },
                   child: _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
                 ),
                 const SizedBox(height: 16),
-                _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
+                GestureDetector(
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('التعليقات قيد التطوير...')));
+                  },
+                  child: _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
+                ),
                 const SizedBox(height: 16),
                 GestureDetector(
-                  onTap: () => Share.share(post['topText'] ?? ''),
+                  onTap: () => Share.share('شاهد هذا المنشور على تطبيق الناصح!'),
                   child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
                 ),
               ],
