@@ -84,7 +84,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('studio_draft_image', _selectedImage!.path);
     await prefs.setString('studio_draft_text', _textController.text);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم حفظ المسودة'), backgroundColor: Colors.green));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Brouillon enregistré'), backgroundColor: Colors.green));
   }
 
   Future<void> _clearDraft() async {
@@ -118,9 +118,9 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       final Uint8List? imageBytes = await _screenshotController.capture();
       if (imageBytes != null) {
         await ImageGallerySaverPlus.saveImage(imageBytes, name: 'elnaseh_post');
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم الحفظ في المعرض'), backgroundColor: Colors.green));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Enregistré dans la galerie'), backgroundColor: Colors.green));
       }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e'), backgroundColor: Colors.red)); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Échec de l\'enregistrement: $e'), backgroundColor: Colors.red)); }
   }
 
   Future<void> _publishPost() async {
@@ -131,17 +131,17 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     setState(() => _isUploading = true);
     try {
       final Uint8List? imageBytes = await _screenshotController.capture();
-      if (imageBytes == null) throw Exception("فشل التقاط الصورة");
+      if (imageBytes == null) throw Exception("Échec de la capture d'image");
       final String fileName = 'post_${DateTime.now().millisecondsSinceEpoch}.png';
       final Reference storageRef = FirebaseStorage.instance.ref().child('posts/$fileName');
       final UploadTask uploadTask = storageRef.putData(imageBytes);
       final TaskSnapshot taskSnapshot = await uploadTask;
-      if (taskSnapshot.state != TaskState.success) throw Exception("فشل رفع الصورة");
+      if (taskSnapshot.state != TaskState.success) throw Exception("Échec du téléchargement de l'image");
       final String downloadUrl = await storageRef.getDownloadURL();
       String allText = _textLayers.map((t) => t.text).where((t) => t.isNotEmpty).join(' ');
       await FirebaseFirestore.instance.collection('announcements').add({
-        'title': allText.isEmpty ? 'منشور جديد' : allText,
-        'content': allText.isEmpty ? 'تصميم جديد' : allText,
+        'title': allText.isEmpty ? 'Nouveau post' : allText,
+        'content': allText.isEmpty ? 'Nouveau design' : allText,
         'image_url': downloadUrl, 
         'tag': 'معلومات',
         'sender': 'الدفاع المدني',
@@ -152,9 +152,9 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       await _clearDraft();
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم النشر بنجاح!'), backgroundColor: Colors.green));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publié avec succès!'), backgroundColor: Colors.green));
       }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e'), backgroundColor: Colors.red)); } finally { if (mounted) setState(() => _isUploading = false); }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Échec de la publication: $e'), backgroundColor: Colors.red)); } finally { if (mounted) setState(() => _isUploading = false); }
   }
 
   void _showColorPicker({required bool isBackground}) {
@@ -164,9 +164,9 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(isBackground ? 'لون الخلفية' : 'لون النص', style: const TextStyle(color: Colors.white)),
+        title: Text(isBackground ? 'Couleur de fond' : 'Couleur du texte', style: const TextStyle(color: Colors.white)),
         content: SingleChildScrollView(child: ColorPicker(pickerColor: isBackground ? layer.backgroundColor : layer.color, onColorChanged: (color) => setState(() { if (isBackground) _textLayers[_activeTextIndex].backgroundColor = color; else _textLayers[_activeTextIndex].color = color; }), pickerAreaHeightPercent: 0.7)),
-        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق', style: TextStyle(color: Colors.cyanAccent)))],
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Fermer', style: TextStyle(color: Colors.cyanAccent)))],
       ),
     );
   }
@@ -176,7 +176,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFF0A0E17),
       appBar: AppBar(
-        title: const Text('استوديو النشر', style: TextStyle(color: Colors.cyanAccent)),
+        title: const Text('Studio de publication', style: TextStyle(color: Colors.cyanAccent)),
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
@@ -195,9 +195,9 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         children: [
           const Icon(Icons.add_photo_alternate, size: 100, color: Colors.cyanAccent),
           const SizedBox(height: 20),
-          const Text('اختر صورة للبدء', style: TextStyle(color: Colors.white, fontSize: 18)),
+          const Text('Choisissez une image pour commencer', style: TextStyle(color: Colors.white, fontSize: 18)),
           const SizedBox(height: 20),
-          ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)), onPressed: _pickImage, icon: const Icon(Icons.photo_library, color: Colors.black), label: const Text('اختيار من المعرض', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
+          ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)), onPressed: _pickImage, icon: const Icon(Icons.photo_library, color: Colors.black), label: const Text('Choisir dans la galerie', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -230,7 +230,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                             decoration: BoxDecoration(color: layer.backgroundColor, borderRadius: BorderRadius.circular(4), border: isActive ? Border.all(color: Colors.white, width: 1) : null),
                             child: Text(
-                              layer.text.isEmpty ? 'اكتب هنا...' : layer.text,
+                              layer.text.isEmpty ? 'Écrivez ici...' : layer.text,
                               textAlign: layer.textAlign,
                               style: GoogleFonts.getFont(layer.font, color: layer.color, fontSize: layer.fontSize, fontWeight: layer.isBold ? FontWeight.bold : FontWeight.normal, shadows: layer.hasGlow ? [Shadow(color: layer.color, blurRadius: 20)] : (layer.hasShadow ? [const Shadow(color: Colors.black, blurRadius: 10)] : [])),
                             ),
@@ -244,6 +244,54 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
             ),
           ),
         ),
+        // ✅ شريط الأدوات العمودي على اليمين (بالفرنسية)
+        Positioned(
+          right: 10,
+          top: 100,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildToolButton(
+                icon: Icons.text_fields,
+                color: Colors.cyanAccent,
+                tooltip: 'Ajouter du texte',
+                onPressed: _addNewText,
+              ),
+              const SizedBox(height: 10),
+              _buildToolButton(
+                icon: Icons.image,
+                color: Colors.orangeAccent,
+                tooltip: 'Changer l\'image',
+                onPressed: _pickImage,
+              ),
+              const SizedBox(height: 10),
+              _buildToolButton(
+                icon: Icons.emoji_emotions,
+                color: Colors.amberAccent,
+                tooltip: 'Ajouter un emoji',
+                onPressed: () {
+                  if (_activeTextIndex < 0) return;
+                  showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1E1E1E), builder: (ctx) => Wrap(children: _emojis.map((emoji) => IconButton(icon: Text(emoji, style: const TextStyle(fontSize: 30)), onPressed: () { setState(() { _textLayers[_activeTextIndex].text += emoji; _textController.text = _textLayers[_activeTextIndex].text; }); Navigator.pop(ctx); })).toList()));
+                },
+              ),
+              const SizedBox(height: 10),
+              _buildToolButton(
+                icon: Icons.save_alt,
+                color: Colors.greenAccent,
+                tooltip: 'Enregistrer dans la galerie',
+                onPressed: _saveToGallery,
+              ),
+              const SizedBox(height: 10),
+              _buildToolButton(
+                icon: Icons.send,
+                color: Colors.cyanAccent,
+                tooltip: 'Publier',
+                onPressed: _isUploading ? null : _publishPost,
+              ),
+            ],
+          ),
+        ),
+        // ✅ شريط التعديل النصي (يظهر فقط عند تحرير نص)
         if (_isEditingText && _activeTextIndex >= 0)
           Container(
             color: const Color(0xFF1E1E1E),
@@ -269,7 +317,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                       IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.white), onPressed: () => setState(() => _textLayers[_activeTextIndex].fontSize -= 2)),
                       IconButton(icon: const Icon(Icons.format_align_center, color: Colors.white), onPressed: () => setState(() { _textLayers[_activeTextIndex].textAlign = _textLayers[_activeTextIndex].textAlign == TextAlign.center ? TextAlign.right : (_textLayers[_activeTextIndex].textAlign == TextAlign.right ? TextAlign.left : TextAlign.center); })),
                       IconButton(icon: Icon(Icons.auto_awesome, color: _textLayers[_activeTextIndex].hasGlow ? Colors.cyanAccent : Colors.white), onPressed: () => setState(() => _textLayers[_activeTextIndex].hasGlow = !_textLayers[_activeTextIndex].hasGlow)),
-                      IconButton(icon: const Icon(Icons.emoji_emotions, color: Colors.amberAccent), onPressed: () { showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1E1E1E), builder: (ctx) => Wrap(children: _emojis.map((emoji) => IconButton(icon: Text(emoji, style: const TextStyle(fontSize: 30)), onPressed: () { setState(() { _textLayers[_activeTextIndex].text += emoji; _textController.text = _textLayers[_activeTextIndex].text; }); Navigator.pop(ctx); })).toList())); }),
                       IconButton(icon: const Icon(Icons.check, color: Colors.greenAccent), onPressed: () { FocusScope.of(context).unfocus(); setState(() => _activeTextIndex = -1); }),
                     ],
                   ),
@@ -299,7 +346,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                   textAlign: TextAlign.center,
                   onChanged: (val) => _updateActiveText(),
                   decoration: InputDecoration(
-                    hintText: 'اكتب النص أو الصقه...',
+                    hintText: 'Écrivez ou collez le texte...',
                     hintStyle: const TextStyle(color: Colors.grey),
                     filled: true,
                     fillColor: const Color(0xFF0A0E17),
@@ -321,19 +368,20 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
               ],
             ),
           ),
-        if (!_isEditingText)
-          Container(
-            color: const Color(0xFF1E1E1E),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                TextButton.icon(onPressed: _addNewText, icon: const Icon(Icons.text_fields, color: Colors.cyanAccent), label: const Text('إضافة نص', style: TextStyle(color: Colors.cyanAccent))),
-                TextButton.icon(onPressed: _pickImage, icon: const Icon(Icons.image, color: Colors.orangeAccent), label: const Text('تغيير الصورة', style: TextStyle(color: Colors.orangeAccent))),
-              ],
-            ),
-          ),
       ],
+    );
+  }
+
+  // دالة مساعدة لبناء أزرار الأدوات العمودية
+  Widget _buildToolButton({required IconData icon, required Color color, required String tooltip, required VoidCallback? onPressed}) {
+    return Tooltip(
+      message: tooltip,
+      child: FloatingActionButton(
+        mini: true,
+        backgroundColor: color.withOpacity(0.2),
+        onPressed: onPressed,
+        child: Icon(icon, color: color, size: 24),
+      ),
     );
   }
 }
