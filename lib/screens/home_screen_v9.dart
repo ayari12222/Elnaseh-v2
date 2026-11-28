@@ -8,7 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart';
-import 'upload_screen.dart';
+import 'upload_screen.dart'; // استوديو النشر
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
@@ -101,10 +101,11 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       ),
       body: Stack(
         children: [
+          // 🔴 تم التعديل هنا: البحث في مجموعة announcements
           StreamBuilder<QuerySnapshot>(
             stream: _selectedCategory == 'الكل'
-                ? _firestore.collection('posts').orderBy('createdAt', descending: true).snapshots()
-                : _firestore.collection('posts').where('tag', isEqualTo: _selectedCategory).orderBy('createdAt', descending: true).snapshots(),
+                ? _firestore.collection('announcements').orderBy('createdAt', descending: true).snapshots()
+                : _firestore.collection('announcements').where('tag', isEqualTo: _selectedCategory).orderBy('createdAt', descending: true).snapshots(),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.cyanAccent));
               if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد منشورات', style: TextStyle(color: Colors.white)));
@@ -150,10 +151,14 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Widget _buildPost(Map<String, dynamic> post) {
+    // 🔴 تم التعديل هنا: استخدام أسماء الحقول من Firebase (content و image_url)
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (post['imageUrl'] != null) Image.network(post['imageUrl'], fit: BoxFit.cover) else Container(color: Colors.black),
+        if (post['image_url'] != null && post['image_url'] != '')
+          Image.network(post['image_url'], fit: BoxFit.cover)
+        else
+          Container(color: Colors.black),
         Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.center, colors: [Colors.black.withOpacity(0.8), Colors.transparent]))),
         Positioned(
           bottom: 20, left: 16, right: 80,
@@ -162,9 +167,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
             children: [
               Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: Text(post['tag'] ?? 'عام', style: const TextStyle(color: Colors.white, fontSize: 12))),
               const SizedBox(height: 8),
-              Text(post['sender'] ?? 'مجهول', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+              Text(post['title'] ?? 'الناصح الرسمي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 8),
-              Text(post['text'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 16)),
+              Text(post['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 16)),
             ],
           ),
         ),
@@ -176,7 +181,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
               const SizedBox(height: 16),
               _buildActionButton(Icons.comment, (post['comments'] ?? 0).toString(), Colors.white),
               const SizedBox(height: 16),
-              GestureDetector(onTap: () => Share.share(post['text'] ?? ''), child: _buildActionButton(Icons.share, 'مشاركة', Colors.white)),
+              GestureDetector(onTap: () => Share.share(post['content'] ?? ''), child: _buildActionButton(Icons.share, 'مشاركة', Colors.white)),
             ],
           ),
         ),
