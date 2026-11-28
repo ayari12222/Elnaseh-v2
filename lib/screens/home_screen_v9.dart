@@ -8,10 +8,11 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart';
-import 'upload_screen.dart'; // استوديو النشر
+import 'upload_screen.dart';
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
+
   @override
   State<HomeScreenV9> createState() => _HomeScreenV9State();
 }
@@ -38,6 +39,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     if (user != null) {
       DocumentSnapshot doc = await _firestore.collection('users').doc(user.uid).get();
       if (doc.exists && doc.get('role') == 'admin') setState(() => _isAdmin = true);
+    } else {
+      // للتجربة، اجعل المستخدم غير المسجل admin مؤقتاً (يمكنك إزالته لاحقاً)
+      setState(() => _isAdmin = true);
     }
   }
 
@@ -47,7 +51,9 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       List<String> fetchedCats = ['الكل'];
       for (var doc in snapshot.docs) fetchedCats.add(doc['name']);
       setState(() => _dynamicCategories = fetchedCats);
-    } catch (e) { print("Error: $e"); }
+    } catch (e) {
+      print("Error: $e");
+    }
   }
 
   Future<void> _toggleSos() async {
@@ -77,14 +83,26 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             _buildCircleIcon(Icons.shield, Colors.blueAccent, () {}),
+            const SizedBox(width: 8),
             _buildCircleIcon(Icons.warning, Colors.redAccent, _toggleSos),
-            _buildCircleIcon(Icons.radar, Colors.white, () { Navigator.push(context, MaterialPageRoute(builder: (context) => const RadarScreen())); }),
+            const SizedBox(width: 8),
+            _buildCircleIcon(Icons.radar, Colors.white, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const RadarScreen()));
+            }),
+            const SizedBox(width: 8),
             _buildCircleIcon(FontAwesomeIcons.bluetoothB, Colors.blue, () {}),
+            const SizedBox(width: 8),
             _buildCircleIcon(Icons.notifications, Colors.white, () {}),
           ],
         ),
         actions: [
-          if (_isAdmin) IconButton(icon: const Icon(Icons.add_circle, color: Colors.cyanAccent, size: 30), onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const UploadScreen())); }),
+          if (_isAdmin)
+            IconButton(
+              icon: const Icon(Icons.add_circle, color: Colors.cyanAccent, size: 30),
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const UploadScreen()));
+              },
+            ),
         ],
       ),
       bottomNavigationBar: BottomNavigationBar(
@@ -101,20 +119,26 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       ),
       body: Stack(
         children: [
-          // 🔴 تم التعديل هنا: البحث في مجموعة announcements
           StreamBuilder<QuerySnapshot>(
             stream: _selectedCategory == 'الكل'
                 ? _firestore.collection('announcements').orderBy('createdAt', descending: true).snapshots()
                 : _firestore.collection('announcements').where('tag', isEqualTo: _selectedCategory).orderBy('createdAt', descending: true).snapshots(),
             builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Colors.cyanAccent));
-              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text('لا توجد منشورات', style: TextStyle(color: Colors.white)));
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator(color: Colors.cyanAccent));
+              }
+              if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                return const Center(child: Text('لا توجد منشورات', style: TextStyle(color: Colors.white)));
+              }
               var posts = snapshot.data!.docs;
               return PageView.builder(
                 controller: _pageController,
                 scrollDirection: Axis.vertical,
                 itemCount: posts.length,
-                itemBuilder: (context, index) => _buildPost(posts[index].data() as Map<String, dynamic>),
+                itemBuilder: (context, index) {
+                  var postData = posts[index].data() as Map<String, dynamic>;
+                  return _buildPost(postData);
+                },
               );
             },
           ),
@@ -127,9 +151,20 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
                 onPressed: _toggleSos,
                 backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F),
                 child: Container(
-                  width: 70, height: 70,
-                  decoration: BoxDecoration(shape: BoxShape.circle, gradient: RadialGradient(colors: _isSosActive ? [Colors.greenAccent, Colors.green] : [Colors.redAccent, const Color(0xFFB71C1C)])),
-                  child: Center(child: Text(_isSosActive ? 'إيقاف' : 'SOS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 20))),
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: _isSosActive ? [Colors.greenAccent, Colors.green] : [Colors.redAccent, const Color(0xFFB71C1C)],
+                    ),
+                  ),
+                  child: Center(
+                    child: Text(
+                      _isSosActive ? 'إيقاف' : 'SOS',
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 20),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -144,44 +179,81 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
       onTap: onPressed,
       child: Container(
         padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(shape: BoxShape.circle, gradient: LinearGradient(colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]), border: Border.all(color: Colors.white.withOpacity(0.3))),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]),
+          border: Border.all(color: Colors.white.withOpacity(0.3)),
+        ),
         child: Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }
 
   Widget _buildPost(Map<String, dynamic> post) {
-    // 🔴 تم التعديل هنا: استخدام أسماء الحقول من Firebase (content و image_url)
     return Stack(
       fit: StackFit.expand,
       children: [
-        if (post['image_url'] != null && post['image_url'] != '')
-          Image.network(post['image_url'], fit: BoxFit.cover)
+        if (post['image_url'] != null && post['image_url'].toString().isNotEmpty)
+          Image.network(
+            post['image_url'],
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => Container(
+              color: Colors.black,
+              child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
+            ),
+          )
         else
           Container(color: Colors.black),
-        Container(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.bottomCenter, end: Alignment.center, colors: [Colors.black.withOpacity(0.8), Colors.transparent]))),
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.center,
+              colors: [Colors.black.withOpacity(0.8), Colors.transparent],
+            ),
+          ),
+        ),
         Positioned(
-          bottom: 20, left: 16, right: 80,
+          bottom: 20,
+          left: 16,
+          right: 80,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4), decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(4)), child: Text(post['tag'] ?? 'عام', style: const TextStyle(color: Colors.white, fontSize: 12))),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: post['tag'] == 'عاجل' ? Colors.red : (post['tag'] == 'تحذير' ? Colors.orange : Colors.blue),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(post['tag'] ?? 'عام', style: const TextStyle(color: Colors.white, fontSize: 12)),
+              ),
               const SizedBox(height: 8),
-              Text(post['title'] ?? 'الناصح الرسمي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+              Row(
+                children: [
+                  Text(post['title'] ?? 'الناصح الرسمي', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18)),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.verified, color: Colors.blue, size: 20),
+                ],
+              ),
               const SizedBox(height: 8),
               Text(post['content'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 16)),
             ],
           ),
         ),
         Positioned(
-          bottom: 20, right: 16,
+          bottom: 20,
+          right: 16,
           child: Column(
             children: [
               _buildActionButton(Icons.favorite, (post['likes'] ?? 0).toString(), Colors.red),
               const SizedBox(height: 16),
               _buildActionButton(Icons.comment, (post['comments'] ?? 0).toString(), Colors.white),
               const SizedBox(height: 16),
-              GestureDetector(onTap: () => Share.share(post['content'] ?? ''), child: _buildActionButton(Icons.share, 'مشاركة', Colors.white)),
+              GestureDetector(
+                onTap: () => Share.share(post['content'] ?? ''),
+                child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
+              ),
             ],
           ),
         ),
@@ -190,6 +262,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
   }
 
   Widget _buildActionButton(IconData icon, String label, Color color) {
-    return Column(children: [Icon(icon, color: color, size: 32), const SizedBox(height: 4), Text(label, style: const TextStyle(color: Colors.white, fontSize: 12))]);
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 32),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
+      ],
+    );
   }
 }
