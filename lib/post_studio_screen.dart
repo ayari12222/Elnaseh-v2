@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:flutter_colorpicker/flutter_colorpicker.dart'; 
+import 'package:google_fonts/google_fonts.dart'; 
 import 'dart:io';
 
 class PostStudioScreen extends StatefulWidget {
@@ -20,7 +21,12 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   final ImagePicker _picker = ImagePicker();
   bool _isLoading = false;
 
-  // دالة اختيار الصورة
+  // إعدادات النص
+  Color _textColor = Colors.black;
+  double _fontSize = 22.0;
+  TextAlign _textAlign = TextAlign.center;
+  bool _isTopTextActive = true; 
+
   Future<void> _pickImage() async {
     final XFile? image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
     if (image != null) {
@@ -28,11 +34,36 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     }
   }
 
-  // دالة النشر
+  // دالة فتح لوحة الألوان
+  void _pickColor() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('اختر لون النص', style: TextStyle(color: Colors.white)),
+        content: SingleChildScrollView(
+          child: ColorPicker(
+            pickerColor: _textColor,
+            onColorChanged: (color) {
+              setState(() => _textColor = color);
+            },
+            pickerAreaHeightPercent: 0.7,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('تم', style: TextStyle(color: Colors.cyanAccent)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _publishPost() async {
-    if (_topTextController.text.isEmpty && _bottomTextController.text.isEmpty && _selectedImage == null) {
+    if (_selectedImage == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('يرجى إضافة نص أو صورة'), backgroundColor: Colors.red),
+        const SnackBar(content: Text('يرجى اختيار صورة أولاً'), backgroundColor: Colors.red),
       );
       return;
     }
@@ -40,29 +71,19 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. تسجيل الدخول بحساب المسؤول (لضمان صلاحيات الكتابة)
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: 'ayaribett22@gmail.com', // ✏️ إيميلك
-        password: 'abiromri201',        // ✏️ كلمة السر
-      );
-
-      // 2. رفع الصورة إلى Firebase Storage (إذا وجدت)
       String imageUrl = '';
-      if (_selectedImage != null) {
-        final ref = FirebaseStorage.instance.ref().child('announcements/${DateTime.now().millisecondsSinceEpoch}.jpg');
-        await ref.putFile(_selectedImage!);
-        imageUrl = await ref.getDownloadURL();
-      }
+      final ref = FirebaseStorage.instance.ref().child('announcements/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      await ref.putFile(_selectedImage!);
+      imageUrl = await ref.getDownloadURL();
 
-      // 3. حفظ المنشور في Firestore (يتم إنشاء الحقول تلقائياً)
       await FirebaseFirestore.instance.collection('announcements').add({
-        'title': _topTextController.text.trim(),       // ✅ النص العلوي
-        'content': _bottomTextController.text.trim(),  // ✅ النص السفلي
-        'image_url': imageUrl,                         // ✅ رابط الصورة
-        'type': imageUrl.isNotEmpty ? 'image' : 'text',
+        'title': _topTextController.text.trim(),
+        'content': _bottomTextController.text.trim(),
+        'image_url': imageUrl,
         'likes': 0,
         'comments': 0,
-        'created_at': FieldValue.serverTimestamp(),    // ✅ تاريخ النشر
+        'created_at': FieldValue.serverTimestamp(),
+        'type': 'image',
         'tag': 'الكل',
       });
 
@@ -70,7 +91,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('✅ تم النشر بنجاح!'), backgroundColor: Colors.green),
         );
-        Navigator.pop(context); // العودة للشاشة الرئيسية
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -86,89 +107,171 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF121212),
+      backgroundColor: Colors.black,
       appBar: AppBar(
         title: const Text('🎨 استوديو النشر', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF1E1E1E),
         iconTheme: const IconThemeData(color: Colors.white),
+        actions: [
+          IconButton(
+            icon: _isLoading 
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Icon(Icons.check, color: Colors.cyanAccent, size: 30),
+            onPressed: _isLoading ? null : _publishPost,
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('النص العلوي:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _topTextController,
-              maxLines: 3,
-              style: const TextStyle(color: Colors.black, backgroundColor: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'اكتب النص الذي سيظهر في الصندوق الأول...',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            const Text('النص السفلي:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _bottomTextController,
-              maxLines: 3,
-              style: const TextStyle(color: Colors.black, backgroundColor: Colors.white),
-              decoration: const InputDecoration(
-                hintText: 'اكتب النص الذي سيظهر في الصندوق الثاني...',
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // زر اختيار الصورة
-            Row(
-              children: [
-                ElevatedButton.icon(
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. الصورة (تملأ الشاشة)
+          if (_selectedImage != null)
+            Image.file(_selectedImage!, fit: BoxFit.cover)
+          else
+            Container(
+              color: const Color(0xFF1E1E1E),
+              child: Center(
+                child: ElevatedButton.icon(
                   onPressed: _pickImage,
-                  icon: const Icon(Icons.image, color: Colors.white),
-                  label: const Text('اختيار صورة من المعرض', style: TextStyle(color: Colors.white)),
+                  icon: const Icon(Icons.image),
+                  label: const Text('اختيار صورة من المعرض'),
                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blueGrey),
                 ),
-                const SizedBox(width: 10),
-                if (_selectedImage != null)
-                  const Icon(Icons.check_circle, color: Colors.green, size: 28),
-              ],
-            ),
-            
-            // معاينة الصورة
-            if (_selectedImage != null) ...[
-              const SizedBox(height: 16),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(10),
-                child: Image.file(_selectedImage!, height: 150, width: double.infinity, fit: BoxFit.cover),
               ),
-            ],
-            
-            const SizedBox(height: 30),
-            
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _publishPost,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.cyanAccent,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+
+          // 2. حقول الكتابة فوق الصورة
+          if (_selectedImage != null) ...[
+            Positioned(
+              top: 60, left: 16, right: 80, // ترك مساحة للأزرار على اليمين
+              child: GestureDetector(
+                onTap: () => setState(() => _isTopTextActive = true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: _isTopTextActive ? Border.all(color: Colors.cyanAccent, width: 2) : null,
+                  ),
+                  child: TextField(
+                    controller: _topTextController,
+                    style: GoogleFonts.cairo(
+                      color: _textColor,
+                      fontSize: _fontSize,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: _textAlign,
+                    decoration: const InputDecoration(
+                      hintText: 'النص العلوي...',
+                      border: InputBorder.none,
+                    ),
+                  ),
                 ),
-                child: _isLoading
-                    ? const CircularProgressIndicator(color: Colors.black)
-                    : const Text('نشر الآن', style: TextStyle(fontSize: 18, color: Colors.black, fontWeight: FontWeight.bold)),
+              ),
+            ),
+
+            Positioned(
+              bottom: 120, left: 16, right: 80, // ترك مساحة للأزرار على اليمين
+              child: GestureDetector(
+                onTap: () => setState(() => _isTopTextActive = false),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(8),
+                    border: !_isTopTextActive ? Border.all(color: Colors.cyanAccent, width: 2) : null,
+                  ),
+                  child: TextField(
+                    controller: _bottomTextController,
+                    style: GoogleFonts.cairo(
+                      color: _textColor,
+                      fontSize: _fontSize,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: _textAlign,
+                    decoration: const InputDecoration(
+                      hintText: 'النص السفلي...',
+                      border: InputBorder.none,
+                    ),
+                  ),
+                ),
               ),
             ),
           ],
+
+          // 3. الأدوات على أقصى اليمين (تحت بعضها)
+          if (_selectedImage != null)
+            Positioned(
+              right: 10,
+              top: 150, // نبدأ من الأعلى قليلاً
+              child: Column(
+                children: [
+                  // زر فتح لوحة الألوان
+                  _buildToolButton(
+                    icon: Icons.color_lens,
+                    color: _textColor == Colors.white ? Colors.black : Colors.white,
+                    backgroundColor: _textColor,
+                    onTap: _pickColor,
+                  ),
+                  const SizedBox(height: 15),
+
+                  // أزرار المحاذاة
+                  _buildToolButton(
+                    icon: Icons.format_align_center,
+                    onTap: () => setState(() => _textAlign = TextAlign.center),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.format_align_right,
+                    onTap: () => setState(() => _textAlign = TextAlign.right),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.format_align_left,
+                    onTap: () => setState(() => _textAlign = TextAlign.left),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // أزرار تكبير وتصغير الخط
+                  _buildToolButton(
+                    icon: Icons.text_increase,
+                    onTap: () => setState(() => _fontSize += 2),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildToolButton(
+                    icon: Icons.text_decrease,
+                    onTap: () => setState(() => _fontSize = _fontSize > 12 ? _fontSize - 2 : 12),
+                  ),
+                  const SizedBox(height: 15),
+
+                  // زر تغيير الصورة
+                  _buildToolButton(
+                    icon: Icons.image,
+                    onTap: _pickImage,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // تصميم زر الأداة (مثل تيك توك)
+  Widget _buildToolButton({required IconData icon, required VoidCallback onTap, Color color = Colors.white, Color? backgroundColor}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 45,
+        height: 45,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: backgroundColor ?? Colors.black.withOpacity(0.5),
+          boxShadow: [
+            BoxShadow(color: Colors.black.withOpacity(0.3), blurRadius: 5, spreadRadius: 1),
+          ],
         ),
+        child: Icon(icon, color: color, size: 24),
       ),
     );
   }
