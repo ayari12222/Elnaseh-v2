@@ -202,7 +202,6 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
     );
   }
 
-  
   Widget _buildCircleIcon(IconData icon, Color color, VoidCallback onPressed) {
     return GestureDetector(
       onTap: onPressed,
@@ -210,33 +209,22 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft, 
-            end: Alignment.bottomRight, 
-            colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]
-          ),
+          gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]),
           border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
-          boxShadow: [
-            BoxShadow(
-              color: color.withOpacity(0.4), 
-              blurRadius: 10, 
-              spreadRadius: 1, 
-              offset: const Offset(0, 4)
-            )
-          ],
+          boxShadow: [BoxShadow(color: color.withOpacity(0.4), blurRadius: 10, spreadRadius: 1, offset: const Offset(0, 4))],
         ),
         child: Icon(icon, color: Colors.white, size: 22),
       ),
     );
   }
 
-  // ✅ تصميم المنشور الجديد (نص فوق الصورة + شريط سفلي + أزرار احترافية)
+  // ✅ تصميم المنشور (صورة فقط + أزرار جانبية)
   Widget _buildPost(Map<String, dynamic> post) {
     return SizedBox.expand(
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // 1. الصورة كخلفية تملأ الشاشة
+          // 1. الصورة المصممة (تحتوي على النص بداخلها)
           if (post['type'] == 'image' && post['image'].isNotEmpty)
             Image.network(
               post['image'], 
@@ -249,107 +237,7 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
           else
             Container(color: Colors.black),
 
-          // 2. التدرج اللوني لأسفل الشاشة لتحسين قراءة النص
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.transparent,
-                    Colors.black.withOpacity(0.7),
-                    Colors.black.withOpacity(0.9),
-                  ],
-                  stops: const [0.0, 0.6, 0.85, 1.0],
-                ),
-              ),
-            ),
-          ),
-
-          // 3. النصوص فوق الصورة
-          Positioned(
-            bottom: 110,
-            left: 16,
-            right: 80,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (post['topText'] != null && post['topText'].toString().isNotEmpty)
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      post['topText'],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.start,
-                    ),
-                  ),
-                
-                if (post['bottomText'] != null && post['bottomText'].toString().isNotEmpty)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      post['bottomText'],
-                      style: const TextStyle(
-                        color: Colors.black,
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.start,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // 4. الشريط السفلي (العنوان والوصف)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              color: Colors.black.withOpacity(0.5),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
-                      const SizedBox(width: 4),
-                      Text(
-                        post['sender'] ?? 'الدفاع المدني',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    post['bottomText'] ?? 'لا يوجد وصف',
-                    style: const TextStyle(color: Colors.white70, fontSize: 13),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // 5. أزرار التفاعل على اليمين
+          // 2. الأزرار الجانبية
           Positioned(
             bottom: 100,
             right: 12,
@@ -388,34 +276,12 @@ class _HomeScreenV9State extends State<HomeScreenV9> {
         Container(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.5),
-                blurRadius: 10,
-                spreadRadius: 2,
-                offset: const Offset(0, 4),
-              ),
-            ],
+            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 10, spreadRadius: 2, offset: const Offset(0, 4))],
           ),
-          child: Icon(
-            icon,
-            color: color,
-            size: 35,
-            shadows: [
-              Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 5),
-            ],
-          ),
+          child: Icon(icon, color: color, size: 35, shadows: [Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 5)]),
         ),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Colors.white, 
-            fontSize: 13, 
-            fontWeight: FontWeight.bold,
-            shadows: [Shadow(color: Colors.black, blurRadius: 5)],
-          ),
-        ),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black, blurRadius: 5)])),
       ],
     );
   }
