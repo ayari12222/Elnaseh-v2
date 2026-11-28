@@ -24,14 +24,15 @@ dependencies:
   sqflite: ^2.3.3
   path: ^1.9.0
   crypto: ^3.0.3
-  firebase_core: ^2.24.0
-  cloud_firestore: ^4.13.0
-  firebase_auth: ^4.15.0
+  firebase_core: ^3.6.0
+  cloud_firestore: ^5.4.4
+  firebase_auth: ^5.3.1
   image_picker: ^1.0.7
   firebase_storage: ^12.3.2
   screenshot: ^3.0.0
   google_fonts: ^6.1.0
   flutter_colorpicker: ^1.0.3
+  http: ^1.2.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
