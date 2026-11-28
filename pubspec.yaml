@@ -2,15 +2,11 @@ name: elnaseh_app
 description: تطبيق الناصح للتواصل بدون إنترنت
 publish_to: 'none'
 version: 1.0.0+1
-
 environment:
   sdk: '>=3.0.0 <4.0.0'
-
 dependencies:
   flutter:
     sdk: flutter
-  
-  # المكتبات الأصلية
   audioplayers: ^6.0.0
   torch_light: ^1.1.0
   share_plus: ^7.2.0
@@ -25,32 +21,22 @@ dependencies:
   flutter_blue_plus: ^2.2.1
   flutter_mesh_network: ^0.1.3
   encrypt: ^5.0.3
-
-  # المكتبات الجديدة (لقاعدة البيانات والـ Mesh)
   sqflite: ^2.3.3
   path: ^1.9.0
   crypto: ^3.0.3
-
-  # إضافات المنصة الإعلامية (Firebase)
   firebase_core: ^2.24.0
   cloud_firestore: ^4.13.0
   firebase_auth: ^4.15.0
   image_picker: ^1.0.7
-  firebase_storage: ^11.5.0
-  
-  # إضافات استوديو النشر (Post Studio)
-  screenshot: ^2.1.0
+  firebase_storage: ^12.3.2
+  screenshot: ^3.0.0
   google_fonts: ^6.1.0
   flutter_colorpicker: ^1.0.3
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
-
 dependency_overrides:
   path: ^1.9.1
-  screenshot: ^3.0.0
-
 flutter:
   uses-material-design: true
