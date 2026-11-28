@@ -125,7 +125,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   Future<void> _publishPost() async {
     if (_selectedImage == null) return;
     
-    // إخفاء لوحة المفاتيح وأدوات التحرير قبل التقاط الصورة
     FocusScope.of(context).unfocus();
     setState(() => _activeTextIndex = -1);
     await Future.delayed(const Duration(milliseconds: 300));
@@ -138,11 +137,9 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       final String fileName = 'post_${DateTime.now().millisecondsSinceEpoch}.png';
       final Reference storageRef = FirebaseStorage.instance.ref().child('posts/$fileName');
       
-      // ✅ رفع الصورة والانتظار حتى يكتمل الرفع
       final UploadTask uploadTask = storageRef.putData(imageBytes);
       final TaskSnapshot taskSnapshot = await uploadTask;
       
-      // ✅ التحقق من نجاح الرفع
       if (taskSnapshot.state != TaskState.success) {
         throw Exception("فشل رفع الصورة، الحالة: ${taskSnapshot.state}");
       }
@@ -151,15 +148,16 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
 
       String allText = _textLayers.map((t) => t.text).where((t) => t.isNotEmpty).join(' ');
 
-      await FirebaseFirestore.instance.collection('posts').add({
-        'title': 'منشور جديد',
+      // ✅ الحفظ في مجموعة announcements لكي تظهر في الواجهة الرئيسية
+      await FirebaseFirestore.instance.collection('announcements').add({
+        'title': allText.isEmpty ? 'منشور جديد' : allText,
         'content': allText.isEmpty ? 'تصميم جديد' : allText,
-        'imageUrl': downloadUrl, // ✅ تأكد أن هذا الحقل مطابق لما تقرأه الشاشة الرئيسية
+        'image_url': downloadUrl, 
         'tag': 'معلومات',
         'sender': 'الدفاع المدني',
         'likes': 0,
         'comments': 0,
-        'timestamp': FieldValue.serverTimestamp(),
+        'created_at': FieldValue.serverTimestamp(),
       });
 
       if (mounted) {
