@@ -8,7 +8,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'radar_screen.dart';
-import 'upload_screen.dart';
+import '../upload_screen.dart'; // ✅ تم تصحيح المسار هنا
 
 class HomeScreenV9 extends StatefulWidget {
   const HomeScreenV9({super.key});
