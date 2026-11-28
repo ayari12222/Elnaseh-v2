@@ -9,11 +9,10 @@ import 'package:screenshot/screenshot.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // ✅ للحفظ
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PostStudioScreen extends StatefulWidget {
   const PostStudioScreen({super.key});
-
   @override
   State<PostStudioScreen> createState() => _PostStudioScreenState();
 }
@@ -29,36 +28,20 @@ class TextLayer {
   TextAlign textAlign;
   bool hasShadow;
   bool hasGlow;
-
-  TextLayer({
-    required this.text,
-    this.color = Colors.white,
-    this.backgroundColor = Colors.transparent,
-    this.fontSize = 24.0,
-    this.font = 'Cairo',
-    this.isBold = true,
-    required this.position,
-    this.textAlign = TextAlign.center,
-    this.hasShadow = true,
-    this.hasGlow = false,
-  });
+  TextLayer({required this.text, this.color = Colors.white, this.backgroundColor = Colors.transparent, this.fontSize = 24.0, this.font = 'Cairo', this.isBold = true, required this.position, this.textAlign = TextAlign.center, this.hasShadow = true, this.hasGlow = false});
 }
 
 class _PostStudioScreenState extends State<PostStudioScreen> {
   File? _selectedImage;
   final ScreenshotController _screenshotController = ScreenshotController();
-  
   List<TextLayer> _textLayers = [];
   int _activeTextIndex = -1;
-  
   final TextEditingController _textController = TextEditingController();
   final FocusNode _textFocusNode = FocusNode();
-  
   final List<String> _fonts = ['Cairo', 'Tajawal', 'Almarai', 'Changa', 'Amiri'];
-  
+  final List<String> _emojis = ['🚨', '⚠️', '🚑', '🔥', '🚔', '📍', '🆘', '🛑', '✅', '❤️', '💔', '🇮🇶', '🇸🇦', '🇹🇳'];
   bool _isUploading = false;
   bool _isEditingText = false;
-
   final List<Map<String, dynamic>> _styles = [
     {'name': 'Classic', 'color': Colors.white, 'bg': Colors.transparent, 'shadow': true},
     {'name': 'Elegance', 'color': Colors.amber, 'bg': Colors.transparent, 'shadow': true},
@@ -69,10 +52,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   @override
   void initState() {
     super.initState();
-    _textFocusNode.addListener(() {
-      setState(() => _isEditingText = _textFocusNode.hasFocus);
-    });
-    _checkDraft(); // ✅ استرجاع المسودة عند الفتح
+    _textFocusNode.addListener(() => setState(() => _isEditingText = _textFocusNode.hasFocus));
+    _checkDraft();
   }
 
   @override
@@ -82,7 +63,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     super.dispose();
   }
 
-  // ✅ استرجاع المسودة المحفوظة
   Future<void> _checkDraft() async {
     final prefs = await SharedPreferences.getInstance();
     final String? path = prefs.getString('studio_draft_image');
@@ -99,20 +79,14 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     }
   }
 
-  // ✅ حفظ المسودة
   Future<void> _saveDraft() async {
     if (_selectedImage == null) return;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('studio_draft_image', _selectedImage!.path);
     await prefs.setString('studio_draft_text', _textController.text);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('✅ تم حفظ المسودة'), backgroundColor: Colors.green),
-      );
-    }
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم حفظ المسودة'), backgroundColor: Colors.green));
   }
 
-  // ✅ حذف المسودة بعد النشر
   Future<void> _clearDraft() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('studio_draft_image');
@@ -122,12 +96,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() {
-        _selectedImage = File(image.path);
-        if (_textLayers.isEmpty) _addNewText();
-      });
-    }
+    if (image != null) setState(() { _selectedImage = File(image.path); if (_textLayers.isEmpty) _addNewText(); });
   }
 
   void _addNewText() {
@@ -139,54 +108,37 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     });
   }
 
-  void _updateActiveText() {
-    if (_activeTextIndex >= 0 && _activeTextIndex < _textLayers.length) {
-      setState(() => _textLayers[_activeTextIndex].text = _textController.text);
-    }
-  }
+  void _updateActiveText() { if (_activeTextIndex >= 0 && _activeTextIndex < _textLayers.length) setState(() => _textLayers[_activeTextIndex].text = _textController.text); }
 
   Future<void> _saveToGallery() async {
     try {
       FocusScope.of(context).unfocus();
       setState(() => _activeTextIndex = -1);
       await Future.delayed(const Duration(milliseconds: 300));
-      
       final Uint8List? imageBytes = await _screenshotController.capture();
       if (imageBytes != null) {
         await ImageGallerySaverPlus.saveImage(imageBytes, name: 'elnaseh_post');
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم الحفظ في المعرض'), backgroundColor: Colors.green));
       }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e'), backgroundColor: Colors.red));
-    }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e'), backgroundColor: Colors.red)); }
   }
 
   Future<void> _publishPost() async {
     if (_selectedImage == null) return;
-    
     FocusScope.of(context).unfocus();
     setState(() => _activeTextIndex = -1);
     await Future.delayed(const Duration(milliseconds: 300));
-
     setState(() => _isUploading = true);
     try {
       final Uint8List? imageBytes = await _screenshotController.capture();
       if (imageBytes == null) throw Exception("فشل التقاط الصورة");
-
       final String fileName = 'post_${DateTime.now().millisecondsSinceEpoch}.png';
       final Reference storageRef = FirebaseStorage.instance.ref().child('posts/$fileName');
-      
       final UploadTask uploadTask = storageRef.putData(imageBytes);
       final TaskSnapshot taskSnapshot = await uploadTask;
-      
-      if (taskSnapshot.state != TaskState.success) {
-        throw Exception("فشل رفع الصورة، الحالة: ${taskSnapshot.state}");
-      }
-
+      if (taskSnapshot.state != TaskState.success) throw Exception("فشل رفع الصورة");
       final String downloadUrl = await storageRef.getDownloadURL();
-
       String allText = _textLayers.map((t) => t.text).where((t) => t.isNotEmpty).join(' ');
-
       await FirebaseFirestore.instance.collection('announcements').add({
         'title': allText.isEmpty ? 'منشور جديد' : allText,
         'content': allText.isEmpty ? 'تصميم جديد' : allText,
@@ -197,18 +149,12 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         'comments': 0,
         'created_at': FieldValue.serverTimestamp(),
       });
-
-      await _clearDraft(); // ✅ حذف المسودة بعد النشر الناجح
-
+      await _clearDraft();
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم النشر بنجاح!'), backgroundColor: Colors.green));
       }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e'), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
+    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e'), backgroundColor: Colors.red)); } finally { if (mounted) setState(() => _isUploading = false); }
   }
 
   void _showColorPicker({required bool isBackground}) {
@@ -219,19 +165,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
         title: Text(isBackground ? 'لون الخلفية' : 'لون النص', style: const TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: isBackground ? layer.backgroundColor : layer.color,
-            onColorChanged: (color) => setState(() {
-              if (isBackground) _textLayers[_activeTextIndex].backgroundColor = color;
-              else _textLayers[_activeTextIndex].color = color;
-            }),
-            pickerAreaHeightPercent: 0.7,
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () { Navigator.pop(ctx); }, child: const Text('إغلاق', style: TextStyle(color: Colors.cyanAccent))),
-        ],
+        content: SingleChildScrollView(child: ColorPicker(pickerColor: isBackground ? layer.backgroundColor : layer.color, onColorChanged: (color) => setState(() { if (isBackground) _textLayers[_activeTextIndex].backgroundColor = color; else _textLayers[_activeTextIndex].color = color; }), pickerAreaHeightPercent: 0.7)),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إغلاق', style: TextStyle(color: Colors.cyanAccent)))],
       ),
     );
   }
@@ -245,16 +180,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
-          // ✅ زر حفظ المسودة
-          IconButton(
-            icon: const Icon(Icons.save, color: Colors.amberAccent),
-            onPressed: _selectedImage != null ? _saveDraft : null,
-          ),
-          // ✅ زر النشر
-          IconButton(
-            icon: _isUploading ? const CircularProgressIndicator(color: Colors.cyanAccent) : const Icon(Icons.send, color: Colors.cyanAccent),
-            onPressed: _isUploading ? null : _publishPost,
-          ),
+          IconButton(icon: const Icon(Icons.save, color: Colors.amberAccent), onPressed: _selectedImage != null ? _saveDraft : null),
+          IconButton(icon: _isUploading ? const CircularProgressIndicator(color: Colors.cyanAccent) : const Icon(Icons.send, color: Colors.cyanAccent), onPressed: _isUploading ? null : _publishPost),
         ],
       ),
       body: _selectedImage == null ? _buildImagePickerView() : _buildStudioView(),
@@ -270,12 +197,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
           const SizedBox(height: 20),
           const Text('اختر صورة للبدء', style: TextStyle(color: Colors.white, fontSize: 18)),
           const SizedBox(height: 20),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)),
-            onPressed: _pickImage,
-            icon: const Icon(Icons.photo_library, color: Colors.black),
-            label: const Text('اختيار من المعرض', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
+          ElevatedButton.icon(style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)), onPressed: _pickImage, icon: const Icon(Icons.photo_library, color: Colors.black), label: const Text('اختيار من المعرض', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold))),
         ],
       ),
     );
@@ -286,10 +208,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       children: [
         Expanded(
           child: GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              setState(() => _activeTextIndex = -1);
-            },
+            onTap: () { FocusScope.of(context).unfocus(); setState(() => _activeTextIndex = -1); },
             child: Screenshot(
               controller: _screenshotController,
               child: Container(
@@ -301,45 +220,19 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                       final index = entry.key;
                       final layer = entry.value;
                       final isActive = index == _activeTextIndex;
-                      
                       return Positioned(
                         left: layer.position.dx,
                         top: layer.position.dy,
                         child: GestureDetector(
-                          onPanUpdate: (details) {
-                            setState(() {
-                              _textLayers[index].position = Offset(
-                                _textLayers[index].position.dx + details.delta.dx,
-                                _textLayers[index].position.dy + details.delta.dy,
-                              );
-                            });
-                          },
-                          onTap: () {
-                            setState(() {
-                              _activeTextIndex = index;
-                              _textController.text = layer.text;
-                              _textFocusNode.requestFocus();
-                            });
-                          },
+                          onPanUpdate: (details) => setState(() { _textLayers[index].position = Offset(_textLayers[index].position.dx + details.delta.dx, _textLayers[index].position.dy + details.delta.dy); }),
+                          onTap: () { setState(() { _activeTextIndex = index; _textController.text = layer.text; _textFocusNode.requestFocus(); }); },
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: layer.backgroundColor,
-                              borderRadius: BorderRadius.circular(4),
-                              border: isActive ? Border.all(color: Colors.white, width: 1) : null,
-                            ),
+                            decoration: BoxDecoration(color: layer.backgroundColor, borderRadius: BorderRadius.circular(4), border: isActive ? Border.all(color: Colors.white, width: 1) : null),
                             child: Text(
                               layer.text.isEmpty ? 'اكتب هنا...' : layer.text,
                               textAlign: layer.textAlign,
-                              style: GoogleFonts.getFont(
-                                layer.font,
-                                color: layer.color,
-                                fontSize: layer.fontSize,
-                                fontWeight: layer.isBold ? FontWeight.bold : FontWeight.normal,
-                                shadows: layer.hasGlow 
-                                    ? [Shadow(color: layer.color, blurRadius: 20)] 
-                                    : (layer.hasShadow ? [const Shadow(color: Colors.black, blurRadius: 10)] : []),
-                              ),
+                              style: GoogleFonts.getFont(layer.font, color: layer.color, fontSize: layer.fontSize, fontWeight: layer.isBold ? FontWeight.bold : FontWeight.normal, shadows: layer.hasGlow ? [Shadow(color: layer.color, blurRadius: 20)] : (layer.hasShadow ? [const Shadow(color: Colors.black, blurRadius: 10)] : [])),
                             ),
                           ),
                         ),
@@ -351,7 +244,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
             ),
           ),
         ),
-
         if (_isEditingText && _activeTextIndex >= 0)
           Container(
             color: const Color(0xFF1E1E1E),
@@ -368,30 +260,16 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                         value: _textLayers[_activeTextIndex].font,
                         dropdownColor: const Color(0xFF0A0E17),
                         style: const TextStyle(color: Colors.white),
-                        icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-                        underline: Container(),
                         items: _fonts.map((font) => DropdownMenuItem(value: font, child: Text(font, style: const TextStyle(color: Colors.white)))).toList(),
                         onChanged: (val) => setState(() => _textLayers[_activeTextIndex].font = val!),
                       ),
                       IconButton(icon: Icon(Icons.color_lens, color: _textLayers[_activeTextIndex].color), onPressed: () => _showColorPicker(isBackground: false)),
-                      IconButton(
-                        icon: Icon(Icons.format_color_fill, color: _textLayers[_activeTextIndex].backgroundColor == Colors.transparent ? Colors.white : _textLayers[_activeTextIndex].backgroundColor),
-                        onPressed: () => _showColorPicker(isBackground: true),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.format_align_center, color: Colors.white),
-                        onPressed: () {
-                          setState(() {
-                            _textLayers[_activeTextIndex].textAlign = _textLayers[_activeTextIndex].textAlign == TextAlign.center
-                                ? TextAlign.right
-                                : (_textLayers[_activeTextIndex].textAlign == TextAlign.right ? TextAlign.left : TextAlign.center);
-                          });
-                        },
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.auto_awesome, color: _textLayers[_activeTextIndex].hasGlow ? Colors.cyanAccent : Colors.white),
-                        onPressed: () => setState(() => _textLayers[_activeTextIndex].hasGlow = !_textLayers[_activeTextIndex].hasGlow),
-                      ),
+                      IconButton(icon: Icon(Icons.format_color_fill, color: _textLayers[_activeTextIndex].backgroundColor == Colors.transparent ? Colors.white : _textLayers[_activeTextIndex].backgroundColor), onPressed: () => _showColorPicker(isBackground: true)),
+                      IconButton(icon: const Icon(Icons.add_circle_outline, color: Colors.white), onPressed: () => setState(() => _textLayers[_activeTextIndex].fontSize += 2)),
+                      IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.white), onPressed: () => setState(() => _textLayers[_activeTextIndex].fontSize -= 2)),
+                      IconButton(icon: const Icon(Icons.format_align_center, color: Colors.white), onPressed: () => setState(() { _textLayers[_activeTextIndex].textAlign = _textLayers[_activeTextIndex].textAlign == TextAlign.center ? TextAlign.right : (_textLayers[_activeTextIndex].textAlign == TextAlign.right ? TextAlign.left : TextAlign.center); })),
+                      IconButton(icon: Icon(Icons.auto_awesome, color: _textLayers[_activeTextIndex].hasGlow ? Colors.cyanAccent : Colors.white), onPressed: () => setState(() => _textLayers[_activeTextIndex].hasGlow = !_textLayers[_activeTextIndex].hasGlow)),
+                      IconButton(icon: const Icon(Icons.emoji_emotions, color: Colors.amberAccent), onPressed: () { showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1E1E1E), builder: (ctx) => Wrap(children: _emojis.map((emoji) => IconButton(icon: Text(emoji, style: const TextStyle(fontSize: 30)), onPressed: () { setState(() { _textLayers[_activeTextIndex].text += emoji; _textController.text = _textLayers[_activeTextIndex].text; }); Navigator.pop(ctx); })).toList())); }),
                       IconButton(icon: const Icon(Icons.check, color: Colors.greenAccent), onPressed: () { FocusScope.of(context).unfocus(); setState(() => _activeTextIndex = -1); }),
                     ],
                   ),
@@ -404,23 +282,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                       return Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 4),
                         child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              _textLayers[_activeTextIndex].color = style['color'];
-                              _textLayers[_activeTextIndex].backgroundColor = style['bg'];
-                              _textLayers[_activeTextIndex].hasShadow = style['shadow'] ?? false;
-                              _textLayers[_activeTextIndex].hasGlow = style['glow'] ?? false;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0A0E17),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.grey),
-                            ),
-                            child: Text(style['name'], style: const TextStyle(color: Colors.white, fontSize: 12)),
-                          ),
+                          onTap: () => setState(() { _textLayers[_activeTextIndex].color = style['color']; _textLayers[_activeTextIndex].backgroundColor = style['bg']; _textLayers[_activeTextIndex].hasShadow = style['shadow'] ?? false; _textLayers[_activeTextIndex].hasGlow = style['glow'] ?? false; }),
+                          child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6), decoration: BoxDecoration(color: const Color(0xFF0A0E17), borderRadius: BorderRadius.circular(6), border: Border.all(color: Colors.grey)), child: Text(style['name'], style: const TextStyle(color: Colors.white, fontSize: 12))),
                         ),
                       );
                     }).toList(),
@@ -435,19 +298,11 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                   maxLines: 2,
                   textAlign: TextAlign.center,
                   onChanged: (val) => _updateActiveText(),
-                  decoration: InputDecoration(
-                    hintText: 'اكتب النص أو الصقه...',
-                    hintStyle: const TextStyle(color: Colors.grey),
-                    filled: true,
-                    fillColor: const Color(0xFF0A0E17),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                  ),
+                  decoration: InputDecoration(hintText: 'اكتب النص أو الصقه...', hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: const Color(0xFF0A0E17), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
                 ),
               ],
             ),
           ),
-
         if (!_isEditingText)
           Container(
             color: const Color(0xFF1E1E1E),
@@ -455,16 +310,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                TextButton.icon(
-                  onPressed: _addNewText,
-                  icon: const Icon(Icons.text_fields, color: Colors.cyanAccent),
-                  label: const Text('إضافة نص', style: TextStyle(color: Colors.cyanAccent)),
-                ),
-                TextButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.image, color: Colors.orangeAccent),
-                  label: const Text('تغيير الصورة', style: TextStyle(color: Colors.orangeAccent)),
-                ),
+                TextButton.icon(onPressed: _addNewText, icon: const Icon(Icons.text_fields, color: Colors.cyanAccent), label: const Text('إضافة نص', style: TextStyle(color: Colors.cyanAccent))),
+                TextButton.icon(onPressed: _pickImage, icon: const Icon(Icons.image, color: Colors.orangeAccent), label: const Text('تغيير الصورة', style: TextStyle(color: Colors.orangeAccent))),
               ],
             ),
           ),
