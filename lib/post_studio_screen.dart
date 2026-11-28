@@ -17,7 +17,6 @@ class PostStudioScreen extends StatefulWidget {
   State<PostStudioScreen> createState() => _PostStudioScreenState();
 }
 
-// كلاس لتمثيل النص (يدعم نصوص متعددة وتأثيرات)
 class TextLayer {
   String text;
   Color color;
@@ -59,7 +58,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   bool _isUploading = false;
   bool _isEditingText = false;
 
-  // أنماط جاهزة (مثل تيك توك)
   final List<Map<String, dynamic>> _styles = [
     {'name': 'Classic', 'color': Colors.white, 'bg': Colors.transparent, 'shadow': true},
     {'name': 'Elegance', 'color': Colors.amber, 'bg': Colors.transparent, 'shadow': true},
@@ -126,6 +124,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
 
   Future<void> _publishPost() async {
     if (_selectedImage == null) return;
+    
+    // إخفاء لوحة المفاتيح وأدوات التحرير قبل التقاط الصورة
     FocusScope.of(context).unfocus();
     setState(() => _activeTextIndex = -1);
     await Future.delayed(const Duration(milliseconds: 300));
@@ -137,7 +137,16 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
 
       final String fileName = 'post_${DateTime.now().millisecondsSinceEpoch}.png';
       final Reference storageRef = FirebaseStorage.instance.ref().child('posts/$fileName');
-      await storageRef.putData(imageBytes);
+      
+      // ✅ رفع الصورة والانتظار حتى يكتمل الرفع
+      final UploadTask uploadTask = storageRef.putData(imageBytes);
+      final TaskSnapshot taskSnapshot = await uploadTask;
+      
+      // ✅ التحقق من نجاح الرفع
+      if (taskSnapshot.state != TaskState.success) {
+        throw Exception("فشل رفع الصورة، الحالة: ${taskSnapshot.state}");
+      }
+
       final String downloadUrl = await storageRef.getDownloadURL();
 
       String allText = _textLayers.map((t) => t.text).where((t) => t.isNotEmpty).join(' ');
@@ -145,7 +154,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       await FirebaseFirestore.instance.collection('posts').add({
         'title': 'منشور جديد',
         'content': allText.isEmpty ? 'تصميم جديد' : allText,
-        'imageUrl': downloadUrl,
+        'imageUrl': downloadUrl, // ✅ تأكد أن هذا الحقل مطابق لما تقرأه الشاشة الرئيسية
         'tag': 'معلومات',
         'sender': 'الدفاع المدني',
         'likes': 0,
@@ -232,7 +241,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   Widget _buildStudioView() {
     return Column(
       children: [
-        // منطقة الصورة
         Expanded(
           child: GestureDetector(
             onTap: () {
@@ -301,7 +309,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
           ),
         ),
 
-        // ✅ شريط الأدوات العلوي (يظهر فوق لوحة المفاتيح)
         if (_isEditingText && _activeTextIndex >= 0)
           Container(
             color: const Color(0xFF1E1E1E),
@@ -309,13 +316,11 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // أدوات التحكم
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      // زر الخط
                       DropdownButton<String>(
                         value: _textLayers[_activeTextIndex].font,
                         dropdownColor: const Color(0xFF0A0E17),
@@ -325,14 +330,11 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                         items: _fonts.map((font) => DropdownMenuItem(value: font, child: Text(font, style: const TextStyle(color: Colors.white)))).toList(),
                         onChanged: (val) => setState(() => _textLayers[_activeTextIndex].font = val!),
                       ),
-                      // زر لون النص
                       IconButton(icon: Icon(Icons.color_lens, color: _textLayers[_activeTextIndex].color), onPressed: () => _showColorPicker(isBackground: false)),
-                      // زر التظليل (خلفية)
                       IconButton(
                         icon: Icon(Icons.format_color_fill, color: _textLayers[_activeTextIndex].backgroundColor == Colors.transparent ? Colors.white : _textLayers[_activeTextIndex].backgroundColor),
                         onPressed: () => _showColorPicker(isBackground: true),
                       ),
-                      // زر المحاذاة
                       IconButton(
                         icon: const Icon(Icons.format_align_center, color: Colors.white),
                         onPressed: () {
@@ -343,18 +345,15 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                           });
                         },
                       ),
-                      // زر التأثيرات (توهج)
                       IconButton(
                         icon: Icon(Icons.auto_awesome, color: _textLayers[_activeTextIndex].hasGlow ? Colors.cyanAccent : Colors.white),
                         onPressed: () => setState(() => _textLayers[_activeTextIndex].hasGlow = !_textLayers[_activeTextIndex].hasGlow),
                       ),
-                      // زر "تم"
                       IconButton(icon: const Icon(Icons.check, color: Colors.greenAccent), onPressed: () { FocusScope.of(context).unfocus(); setState(() => _activeTextIndex = -1); }),
                     ],
                   ),
                 ),
                 const SizedBox(height: 8),
-                // شريط الأنماط الجاهزة (Classic, Elegance, Neon, Retro)
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -385,7 +384,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // حقل النص
                 TextField(
                   controller: _textController,
                   focusNode: _textFocusNode,
@@ -407,7 +405,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
             ),
           ),
 
-        // الشريط السفلي (يظهر عند عدم التحرير)
         if (!_isEditingText)
           Container(
             color: const Color(0xFF1E1E1E),
