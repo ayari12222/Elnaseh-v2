@@ -1,429 +1,421 @@
-import 'dart:io';
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:torch_light/torch_light.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:screenshot/screenshot.dart';
-import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+import 'radar_screen.dart';
+import '../post_studio_screen.dart';
 
-class PostStudioScreen extends StatefulWidget {
-  const PostStudioScreen({super.key});
-
+class HomeScreenV9 extends StatefulWidget {
+  const HomeScreenV9({super.key});
   @override
-  State<PostStudioScreen> createState() => _PostStudioScreenState();
+  State<HomeScreenV9> createState() => _HomeScreenV9State();
 }
 
-class TextLayer {
-  String text;
-  Color color;
-  Color backgroundColor;
-  double fontSize;
-  String font;
-  bool isBold;
-  Offset position;
-  TextAlign textAlign;
-  bool hasShadow;
-  bool hasGlow;
-
-  TextLayer({
-    required this.text,
-    this.color = Colors.white,
-    this.backgroundColor = Colors.transparent,
-    this.fontSize = 24.0,
-    this.font = 'Cairo',
-    this.isBold = true,
-    required this.position,
-    this.textAlign = TextAlign.center,
-    this.hasShadow = true,
-    this.hasGlow = false,
-  });
-}
-
-class _PostStudioScreenState extends State<PostStudioScreen> {
-  File? _selectedImage;
-  final ScreenshotController _screenshotController = ScreenshotController();
-  
-  List<TextLayer> _textLayers = [];
-  int _activeTextIndex = -1;
-  
-  final TextEditingController _textController = TextEditingController();
-  final FocusNode _textFocusNode = FocusNode();
-  
-  final List<String> _fonts = ['Cairo', 'Tajawal', 'Almarai', 'Changa', 'Amiri'];
-  
-  bool _isUploading = false;
-  bool _isEditingText = false;
-
-  final List<Map<String, dynamic>> _styles = [
-    {'name': 'Classic', 'color': Colors.white, 'bg': Colors.transparent, 'shadow': true},
-    {'name': 'Elegance', 'color': Colors.amber, 'bg': Colors.transparent, 'shadow': true},
-    {'name': 'Neon', 'color': Colors.cyanAccent, 'bg': Colors.transparent, 'shadow': false, 'glow': true},
-    {'name': 'Retro', 'color': Colors.redAccent, 'bg': Colors.yellow, 'shadow': false},
-  ];
+class _HomeScreenV9State extends State<HomeScreenV9> {
+  int _currentIndex = 0;
+  String _selectedCategory = 'الكل';
+  final List<String> _categories = ['الكل', 'عاجل', 'معلومات', 'تحذير'];
+  final PageController _pageController = PageController();
+  bool _isSosActive = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isAdmin = false;
+  final String _adminCode = "ELNASEH2026";
+  List<Map<String, dynamic>> _allPosts = [];
+  bool _isLoading = true;
 
   @override
-  void initState() {
-    super.initState();
-    _textFocusNode.addListener(() {
-      setState(() => _isEditingText = _textFocusNode.hasFocus);
-    });
-  }
+  void initState() { super.initState(); _fetchPosts(); }
 
-  @override
-  void dispose() {
-    _textController.dispose();
-    _textFocusNode.dispose();
-    super.dispose();
-  }
-
-  Future<void> _pickImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      setState(() {
-        _selectedImage = File(image.path);
-        if (_textLayers.isEmpty) _addNewText();
-      });
-    }
-  }
-
-  void _addNewText() {
-    setState(() {
-      _textLayers.add(TextLayer(text: '', position: const Offset(100, 250)));
-      _activeTextIndex = _textLayers.length - 1;
-      _textController.text = '';
-      _textFocusNode.requestFocus();
-    });
-  }
-
-  void _updateActiveText() {
-    if (_activeTextIndex >= 0 && _activeTextIndex < _textLayers.length) {
-      setState(() => _textLayers[_activeTextIndex].text = _textController.text);
-    }
-  }
-
-  Future<void> _saveToGallery() async {
+  Future<void> _fetchPosts() async {
     try {
-      FocusScope.of(context).unfocus();
-      setState(() => _activeTextIndex = -1);
-      await Future.delayed(const Duration(milliseconds: 300));
-      
-      final Uint8List? imageBytes = await _screenshotController.capture();
-      if (imageBytes != null) {
-        await ImageGallerySaverPlus.saveImage(imageBytes, name: 'elnaseh_post');
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم الحفظ في المعرض'), backgroundColor: Colors.green));
-      }
+      final snapshot = await FirebaseFirestore.instance.collection('announcements').orderBy('created_at', descending: true).get();
+      final fetchedPosts = snapshot.docs.map((doc) {
+        final data = doc.data();
+        return {
+          'id': doc.id,
+          'image': data['image_url'] ?? 'https://images.unsplash.com/photo-1582213782179-e0d53f98f2ca?w=800',
+          'topText': data['title'] ?? '',
+          'bottomText': data['content'] ?? '',
+          'sender': data['sender'] ?? 'الدفاع المدني',
+          'likes': data['likes'] ?? 0,
+          'comments': data['comments'] ?? 0,
+          'type': 'image',
+          'tag': data['tag'] ?? 'الكل',
+        };
+      }).toList();
+      if (mounted) setState(() { _allPosts = fetchedPosts; _isLoading = false; });
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل الحفظ: $e'), backgroundColor: Colors.red));
+      debugPrint('Error fetching posts: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _publishPost() async {
-    if (_selectedImage == null) return;
-    
-    FocusScope.of(context).unfocus();
-    setState(() => _activeTextIndex = -1);
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    setState(() => _isUploading = true);
-    try {
-      final Uint8List? imageBytes = await _screenshotController.capture();
-      if (imageBytes == null) throw Exception("فشل التقاط الصورة");
-
-      final String fileName = 'post_${DateTime.now().millisecondsSinceEpoch}.png';
-      final Reference storageRef = FirebaseStorage.instance.ref().child('posts/$fileName');
-      
-      // ✅ إصلاح الخطأ الأحمر: الانتظار حتى يكتمل الرفع تماماً
-      final UploadTask uploadTask = storageRef.putData(imageBytes);
-      final TaskSnapshot taskSnapshot = await uploadTask;
-      
-      // ✅ التحقق من نجاح الرفع قبل طلب الرابط
-      if (taskSnapshot.state != TaskState.success) {
-        throw Exception("فشل رفع الصورة، الحالة: ${taskSnapshot.state}");
-      }
-
-      final String downloadUrl = await storageRef.getDownloadURL();
-
-      String allText = _textLayers.map((t) => t.text).where((t) => t.isNotEmpty).join(' ');
-
-      await FirebaseFirestore.instance.collection('posts').add({
-        'title': 'منشور جديد',
-        'content': allText.isEmpty ? 'تصميم جديد' : allText,
-        'imageUrl': downloadUrl, 
-        'tag': 'معلومات',
-        'sender': 'الدفاع المدني',
-        'likes': 0,
-        'comments': 0,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-
-      if (mounted) {
-        Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم النشر بنجاح!'), backgroundColor: Colors.green));
-      }
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('فشل النشر: $e'), backgroundColor: Colors.red));
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
-  }
-
-  void _showColorPicker({required bool isBackground}) {
-    if (_activeTextIndex < 0) return;
-    final layer = _textLayers[_activeTextIndex];
+  void _showAdminLoginDialog() {
+    final controller = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1E1E1E),
-        title: Text(isBackground ? 'لون الخلفية' : 'لون النص', style: const TextStyle(color: Colors.white)),
-        content: SingleChildScrollView(
-          child: ColorPicker(
-            pickerColor: isBackground ? layer.backgroundColor : layer.color,
-            onColorChanged: (color) => setState(() {
-              if (isBackground) _textLayers[_activeTextIndex].backgroundColor = color;
-              else _textLayers[_activeTextIndex].color = color;
-            }),
-            pickerAreaHeightPercent: 0.7,
-          ),
-        ),
+        title: const Text('🔐 دخول الناشرين', style: TextStyle(color: Colors.cyanAccent)),
+        content: TextField(controller: controller, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: 'أدخل الرمز السري')),
         actions: [
-          TextButton(onPressed: () { Navigator.pop(ctx); }, child: const Text('إغلاق', style: TextStyle(color: Colors.cyanAccent))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('إلغاء')),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.trim() == _adminCode) {
+                setState(() => _isAdmin = true);
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ تم تفعيل وضع النشر!'), backgroundColor: Colors.green));
+              } else {
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('❌ رمز خاطئ!'), backgroundColor: Colors.red));
+              }
+            },
+            child: const Text('دخول'),
+          ),
         ],
       ),
     );
+  }
+
+  List<Map<String, dynamic>> get _filteredPosts {
+    if (_selectedCategory == 'الكل') return _allPosts;
+    return _allPosts.where((post) => post['tag'] == _selectedCategory).toList();
+  }
+
+  Future<bool> _showPermissionDialog() async {
+    return await showDialog<bool>(
+      context: context, barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+        title: const Row(children: [Icon(Icons.flash_on, color: Colors.amber, size: 30), SizedBox(width: 10), Text('تفعيل الفلاش للطوارئ', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
+        content: const Text('لتشغيل الفلاش تلقائياً في حالات الطوارئ، يرجى السماح للتطبيق بالوصول إلى الكاميرا.', style: TextStyle(color: Colors.white70, fontSize: 15, height: 1.5)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('لاحقاً', style: TextStyle(color: Colors.grey))),
+          ElevatedButton(style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))), onPressed: () => Navigator.pop(context, true), child: const Text('السماح', style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  Future<void> _toggleSos() async {
+    try { HapticFeedback.vibrate(); } catch (e) {}
+    if (!_isSosActive) {
+      var status = await Permission.camera.status;
+      if (!status.isGranted) {
+        bool? userWantsPermission = await _showPermissionDialog();
+        if (userWantsPermission == true) { status = await Permission.camera.request(); } else { return; }
+      }
+      if (status.isGranted) {
+        try { await TorchLight.enableTorch(); } catch (e) {}
+        try { await _audioPlayer.play(UrlSource('https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3')); } catch (e) {}
+        setState(() => _isSosActive = true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تم رفض إذن الكاميرا.'), backgroundColor: Colors.redAccent));
+      }
+    } else {
+      try { await TorchLight.disableTorch(); } catch (e) {}
+      try { await _audioPlayer.stop(); } catch (e) {}
+      setState(() => _isSosActive = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E17),
+      backgroundColor: const Color(0xFF121212),
       appBar: AppBar(
-        title: const Text('استوديو النشر', style: TextStyle(color: Colors.cyanAccent)),
-        backgroundColor: Colors.transparent,
-        iconTheme: const IconThemeData(color: Colors.cyanAccent),
-        actions: [
-          IconButton(icon: const Icon(Icons.save, color: Colors.greenAccent), onPressed: _selectedImage != null ? _saveToGallery : null),
-          IconButton(
-            icon: _isUploading ? const CircularProgressIndicator(color: Colors.cyanAccent) : const Icon(Icons.send, color: Colors.cyanAccent),
-            onPressed: _isUploading ? null : _publishPost,
+        backgroundColor: const Color(0xFF1E1E1E), elevation: 0,
+        leading: PopupMenuButton<String>(
+          icon: const Icon(Icons.menu, color: Colors.white),
+          onSelected: (String value) => setState(() => _selectedCategory = value),
+          itemBuilder: (context) => _categories.map((String category) => PopupMenuItem<String>(value: category, child: Text(category))).toList(),
+        ),
+        title: GestureDetector(
+          onLongPress: _showAdminLoginDialog,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildCircleIcon(Icons.shield, Colors.blueAccent, () {}),
+              const SizedBox(width: 8),
+              _buildCircleIcon(Icons.warning, Colors.redAccent, () { _toggleSos(); }),
+              const SizedBox(width: 8),
+              _buildCircleIcon(Icons.radar, Colors.white, () { Navigator.push(context, MaterialPageRoute(builder: (context) => const RadarScreen())); }),
+              const SizedBox(width: 8),
+              _buildCircleIcon(FontAwesomeIcons.bluetoothB, Colors.blue, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('البلوتوث قيد التطوير...'))); }),
+              const SizedBox(width: 8),
+              _buildCircleIcon(Icons.notifications, Colors.white, () { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('الإشعارات قيد التطوير...'))); }),
+            ],
           ),
+        ),
+        actions: [IconButton(icon: const Icon(Icons.refresh, color: Colors.white), onPressed: () { setState(() => _isLoading = true); _fetchPosts(); })],
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex, onTap: (index) => setState(() => _currentIndex = index),
+        backgroundColor: const Color(0xFF1E1E1E), selectedItemColor: const Color(0xFF1E88E5), unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.campaign), label: 'المنشورات'),
+          BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'الدردشة'),
+          BottomNavigationBarItem(icon: Icon(Icons.devices), label: 'الأجهزة'),
         ],
       ),
-      body: _selectedImage == null ? _buildImagePickerView() : _buildStudioView(),
-    );
-  }
-
-  Widget _buildImagePickerView() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+      body: Stack(
         children: [
-          const Icon(Icons.add_photo_alternate, size: 100, color: Colors.cyanAccent),
-          const SizedBox(height: 20),
-          const Text('اختر صورة للبدء', style: TextStyle(color: Colors.white, fontSize: 18)),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent, padding: const EdgeInsets.symmetric(horizontal: 30, vertical: 15)),
-            onPressed: _pickImage,
-            icon: const Icon(Icons.photo_library, color: Colors.black),
-            label: const Text('اختيار من المعرض', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStudioView() {
-    return Column(
-      children: [
-        Expanded(
-          child: GestureDetector(
-            onTap: () {
-              FocusScope.of(context).unfocus();
-              setState(() => _activeTextIndex = -1);
-            },
-            child: Screenshot(
-              controller: _screenshotController,
-              child: Container(
-                color: Colors.black,
-                child: Stack(
-                  children: [
-                    Positioned.fill(child: Image.file(_selectedImage!, fit: BoxFit.cover)),
-                    ..._textLayers.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final layer = entry.value;
-                      final isActive = index == _activeTextIndex;
-                      
-                      return Positioned(
-                        left: layer.position.dx,
-                        top: layer.position.dy,
-                        child: GestureDetector(
-                          onPanUpdate: (details) {
-                            setState(() {
-                              _textLayers[index].position = Offset(
-                                _textLayers[index].position.dx + details.delta.dx,
-                                _textLayers[index].position.dy + details.delta.dy,
-                              );
-                            });
-                          },
-                          onTap: () {
-                            setState(() {
-                              _activeTextIndex = index;
-                              _textController.text = layer.text;
-                              _textFocusNode.requestFocus();
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: layer.backgroundColor,
-                              borderRadius: BorderRadius.circular(4),
-                              border: isActive ? Border.all(color: Colors.white, width: 1) : null,
-                            ),
-                            child: Text(
-                              layer.text.isEmpty ? 'اكتب هنا...' : layer.text,
-                              textAlign: layer.textAlign,
-                              style: GoogleFonts.getFont(
-                                layer.font,
-                                color: layer.color,
-                                fontSize: layer.fontSize,
-                                fontWeight: layer.isBold ? FontWeight.bold : FontWeight.normal,
-                                shadows: layer.hasGlow 
-                                    ? [Shadow(color: layer.color, blurRadius: 20)] 
-                                    : (layer.hasShadow ? [const Shadow(color: Colors.black, blurRadius: 10)] : []),
-                              ),
-                            ),
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ],
+          if (_isLoading) const Center(child: CircularProgressIndicator(color: Colors.blueAccent))
+          else if (_filteredPosts.isEmpty) const Center(child: Text('لا توجد منشورات حالياً', style: TextStyle(color: Colors.white, fontSize: 18)))
+          else PageView.builder(controller: _pageController, scrollDirection: Axis.vertical, itemCount: _filteredPosts.length, itemBuilder: (context, index) => _buildPost(_filteredPosts[index])),
+          Positioned(
+            left: 20, top: 0, bottom: 0,
+            child: Center(
+              child: FloatingActionButton(
+                onPressed: _toggleSos,
+                backgroundColor: _isSosActive ? Colors.green : const Color(0xFFD32F2F), elevation: 10,
+                child: Container(
+                  width: 70, height: 70,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(colors: _isSosActive ? [Colors.greenAccent, Colors.green] : [Colors.redAccent, const Color(0xFFB71C1C)], center: Alignment.center, radius: 0.8),
+                    boxShadow: [BoxShadow(color: _isSosActive ? Colors.green.withOpacity(0.6) : Colors.red.withOpacity(0.6), blurRadius: 20, spreadRadius: 5)],
+                    border: Border.all(color: Colors.white, width: 2),
+                  ),
+                  child: Center(child: Text(_isSosActive ? 'إيقاف' : 'SOS', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 20, letterSpacing: 1.5))),
                 ),
               ),
             ),
           ),
-        ),
+          if (_isAdmin)
+            Positioned(
+              bottom: 30, right: 20,
+              child: FloatingActionButton(
+                backgroundColor: Colors.cyanAccent,
+                onPressed: () { Navigator.push(context, MaterialPageRoute(builder: (context) => const PostStudioScreen())); },
+                child: const Icon(Icons.add, color: Colors.black, size: 30),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
-        if (_isEditingText && _activeTextIndex >= 0)
-          Container(
-            color: const Color(0xFF1E1E1E),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+  
+  Widget _buildCircleIcon(IconData icon, Color color, VoidCallback onPressed) {
+    return GestureDetector(
+      onTap: onPressed,
+      child: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft, 
+            end: Alignment.bottomRight, 
+            colors: [color.withOpacity(0.6), Colors.black.withOpacity(0.8)]
+          ),
+          border: Border.all(color: Colors.white.withOpacity(0.3), width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: color.withOpacity(0.4), 
+              blurRadius: 10, 
+              spreadRadius: 1, 
+              offset: const Offset(0, 4)
+            )
+          ],
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+
+  // ✅ تصميم المنشور الجديد (نص فوق الصورة + شريط سفلي + أزرار احترافية)
+  Widget _buildPost(Map<String, dynamic> post) {
+    return SizedBox.expand(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // 1. الصورة كخلفية تملأ الشاشة
+          if (post['type'] == 'image' && post['image'].isNotEmpty)
+            Image.network(
+              post['image'], 
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) => Container(
+                color: Colors.black,
+                child: const Center(child: Icon(Icons.image, size: 80, color: Colors.grey)),
+              ),
+            )
+          else
+            Container(color: Colors.black),
+
+          // 2. التدرج اللوني لأسفل الشاشة لتحسين قراءة النص
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withOpacity(0.7),
+                    Colors.black.withOpacity(0.9),
+                  ],
+                  stops: const [0.0, 0.6, 0.85, 1.0],
+                ),
+              ),
+            ),
+          ),
+
+          // 3. النصوص فوق الصورة
+          Positioned(
+            bottom: 110,
+            left: 16,
+            right: 80,
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                if (post['topText'] != null && post['topText'].toString().isNotEmpty)
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      post['topText'],
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.start,
+                    ),
+                  ),
+                
+                if (post['bottomText'] != null && post['bottomText'].toString().isNotEmpty)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      post['bottomText'],
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.start,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // 4. الشريط السفلي (العنوان والوصف)
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: Colors.black.withOpacity(0.5),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
                     children: [
-                      DropdownButton<String>(
-                        value: _textLayers[_activeTextIndex].font,
-                        dropdownColor: const Color(0xFF0A0E17),
-                        style: const TextStyle(color: Colors.white),
-                        icon: const Icon(Icons.arrow_drop_down, color: Colors.white),
-                        underline: Container(),
-                        items: _fonts.map((font) => DropdownMenuItem(value: font, child: Text(font, style: const TextStyle(color: Colors.white)))).toList(),
-                        onChanged: (val) => setState(() => _textLayers[_activeTextIndex].font = val!),
+                      const Icon(Icons.verified, color: Colors.blueAccent, size: 16),
+                      const SizedBox(width: 4),
+                      Text(
+                        post['sender'] ?? 'الدفاع المدني',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                       ),
-                      IconButton(icon: Icon(Icons.color_lens, color: _textLayers[_activeTextIndex].color), onPressed: () => _showColorPicker(isBackground: false)),
-                      IconButton(
-                        icon: Icon(Icons.format_color_fill, color: _textLayers[_activeTextIndex].backgroundColor == Colors.transparent ? Colors.white : _textLayers[_activeTextIndex].backgroundColor),
-                        onPressed: () => _showColorPicker(isBackground: true),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.format_align_center, color: Colors.white),
-                        onPressed: () {
-                          setState(() {
-                            _textLayers[_activeTextIndex].textAlign = _textLayers[_activeTextIndex].textAlign == TextAlign.center
-                                ? TextAlign.right
-                                : (_textLayers[_activeTextIndex].textAlign == TextAlign.right ? TextAlign.left : TextAlign.center);
-                          });
-                        },
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.auto_awesome, color: _textLayers[_activeTextIndex].hasGlow ? Colors.cyanAccent : Colors.white),
-                        onPressed: () => setState(() => _textLayers[_activeTextIndex].hasGlow = !_textLayers[_activeTextIndex].hasGlow),
-                      ),
-                      IconButton(icon: const Icon(Icons.check, color: Colors.greenAccent), onPressed: () { FocusScope.of(context).unfocus(); setState(() => _activeTextIndex = -1); }),
                     ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: _styles.map((style) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 4),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              _textLayers[_activeTextIndex].color = style['color'];
-                              _textLayers[_activeTextIndex].backgroundColor = style['bg'];
-                              _textLayers[_activeTextIndex].hasShadow = style['shadow'] ?? false;
-                              _textLayers[_activeTextIndex].hasGlow = style['glow'] ?? false;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF0A0E17),
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.grey),
-                            ),
-                            child: Text(style['name'], style: const TextStyle(color: Colors.white, fontSize: 12)),
-                          ),
-                        ),
-                      );
-                    }).toList(),
+                  const SizedBox(height: 4),
+                  Text(
+                    post['bottomText'] ?? 'لا يوجد وصف',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextField(
-                  controller: _textController,
-                  focusNode: _textFocusNode,
-                  autofocus: true,
-                  style: const TextStyle(color: Colors.white),
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  onChanged: (val) => _updateActiveText(),
-                  decoration: InputDecoration(
-                    hintText: 'اكتب النص أو الصقه...',
-                    hintStyle: const TextStyle(color: Colors.grey),
-                    filled: true,
-                    fillColor: const Color(0xFF0A0E17),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
 
-        if (!_isEditingText)
-          Container(
-            color: const Color(0xFF1E1E1E),
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          // 5. أزرار التفاعل على اليمين
+          Positioned(
+            bottom: 100,
+            right: 12,
+            child: Column(
               children: [
-                TextButton.icon(
-                  onPressed: _addNewText,
-                  icon: const Icon(Icons.text_fields, color: Colors.cyanAccent),
-                  label: const Text('إضافة نص', style: TextStyle(color: Colors.cyanAccent)),
+                GestureDetector(
+                  onTap: () async {
+                    await FirebaseFirestore.instance.collection('announcements').doc(post['id']).update({
+                      'likes': (post['likes'] ?? 0) + 1,
+                    });
+                    setState(() {});
+                  },
+                  child: _buildActionButton(Icons.favorite, post['likes'].toString(), Colors.white),
                 ),
-                TextButton.icon(
-                  onPressed: _pickImage,
-                  icon: const Icon(Icons.image, color: Colors.orangeAccent),
-                  label: const Text('تغيير الصورة', style: TextStyle(color: Colors.orangeAccent)),
+                const SizedBox(height: 20),
+                _buildActionButton(Icons.comment, post['comments'].toString(), Colors.white),
+                const SizedBox(height: 20),
+                _buildActionButton(Icons.bookmark, 'حفظ', Colors.white),
+                const SizedBox(height: 20),
+                GestureDetector(
+                  onTap: () => Share.share(post['topText'] ?? ''),
+                  child: _buildActionButton(Icons.share, 'مشاركة', Colors.white),
                 ),
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  // ✅ الأزرار الاحترافية مع الظل
+  Widget _buildActionButton(IconData icon, String label, Color color) {
+    return Column(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 10,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Icon(
+            icon,
+            color: color,
+            size: 35,
+            shadows: [
+              Shadow(color: Colors.black.withOpacity(0.8), blurRadius: 5),
+            ],
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(
+            color: Colors.white, 
+            fontSize: 13, 
+            fontWeight: FontWeight.bold,
+            shadows: [Shadow(color: Colors.black, blurRadius: 5)],
+          ),
+        ),
       ],
     );
   }
