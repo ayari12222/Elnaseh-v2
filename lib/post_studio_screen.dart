@@ -9,6 +9,7 @@ import 'package:screenshot/screenshot.dart';
 import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // ✅ للحفظ
 
 class PostStudioScreen extends StatefulWidget {
   const PostStudioScreen({super.key});
@@ -71,6 +72,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     _textFocusNode.addListener(() {
       setState(() => _isEditingText = _textFocusNode.hasFocus);
     });
+    _checkDraft(); // ✅ استرجاع المسودة عند الفتح
   }
 
   @override
@@ -78,6 +80,43 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     _textController.dispose();
     _textFocusNode.dispose();
     super.dispose();
+  }
+
+  // ✅ استرجاع المسودة المحفوظة
+  Future<void> _checkDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    final String? path = prefs.getString('studio_draft_image');
+    final String? text = prefs.getString('studio_draft_text');
+    if (path != null && File(path).existsSync()) {
+      setState(() {
+        _selectedImage = File(path);
+        _textController.text = text ?? '';
+        if (_textController.text.isNotEmpty) {
+          _textLayers.add(TextLayer(text: _textController.text, position: const Offset(100, 250)));
+          _activeTextIndex = 0;
+        }
+      });
+    }
+  }
+
+  // ✅ حفظ المسودة
+  Future<void> _saveDraft() async {
+    if (_selectedImage == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('studio_draft_image', _selectedImage!.path);
+    await prefs.setString('studio_draft_text', _textController.text);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('✅ تم حفظ المسودة'), backgroundColor: Colors.green),
+      );
+    }
+  }
+
+  // ✅ حذف المسودة بعد النشر
+  Future<void> _clearDraft() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('studio_draft_image');
+    await prefs.remove('studio_draft_text');
   }
 
   Future<void> _pickImage() async {
@@ -148,7 +187,6 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
 
       String allText = _textLayers.map((t) => t.text).where((t) => t.isNotEmpty).join(' ');
 
-      // ✅ الحفظ في مجموعة announcements لكي تظهر في الواجهة الرئيسية
       await FirebaseFirestore.instance.collection('announcements').add({
         'title': allText.isEmpty ? 'منشور جديد' : allText,
         'content': allText.isEmpty ? 'تصميم جديد' : allText,
@@ -159,6 +197,8 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         'comments': 0,
         'created_at': FieldValue.serverTimestamp(),
       });
+
+      await _clearDraft(); // ✅ حذف المسودة بعد النشر الناجح
 
       if (mounted) {
         Navigator.pop(context);
@@ -205,7 +245,12 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         backgroundColor: Colors.transparent,
         iconTheme: const IconThemeData(color: Colors.cyanAccent),
         actions: [
-          IconButton(icon: const Icon(Icons.save, color: Colors.greenAccent), onPressed: _selectedImage != null ? _saveToGallery : null),
+          // ✅ زر حفظ المسودة
+          IconButton(
+            icon: const Icon(Icons.save, color: Colors.amberAccent),
+            onPressed: _selectedImage != null ? _saveDraft : null,
+          ),
+          // ✅ زر النشر
           IconButton(
             icon: _isUploading ? const CircularProgressIndicator(color: Colors.cyanAccent) : const Icon(Icons.send, color: Colors.cyanAccent),
             onPressed: _isUploading ? null : _publishPost,
