@@ -63,6 +63,14 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
     super.dispose();
   }
 
+  // ✅ حفظ تلقائي عند أي تغيير
+  Future<void> _autoSaveDraft() async {
+    if (_selectedImage == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('studio_draft_image', _selectedImage!.path);
+    await prefs.setString('studio_draft_text', _textController.text);
+  }
+
   Future<void> _checkDraft() async {
     final prefs = await SharedPreferences.getInstance();
     final String? path = prefs.getString('studio_draft_image');
@@ -81,9 +89,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
 
   Future<void> _saveDraft() async {
     if (_selectedImage == null) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('studio_draft_image', _selectedImage!.path);
-    await prefs.setString('studio_draft_text', _textController.text);
+    await _autoSaveDraft();
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Brouillon enregistré'), backgroundColor: Colors.green));
   }
 
@@ -96,7 +102,10 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     final XFile? image = await picker.pickImage(source: ImageSource.gallery);
-    if (image != null) setState(() { _selectedImage = File(image.path); if (_textLayers.isEmpty) _addNewText(); });
+    if (image != null) {
+      setState(() { _selectedImage = File(image.path); if (_textLayers.isEmpty) _addNewText(); });
+      await _autoSaveDraft(); // حفظ تلقائي بعد اختيار الصورة
+    }
   }
 
   void _addNewText() {
@@ -106,9 +115,15 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       _textController.text = '';
       _textFocusNode.requestFocus();
     });
+    _autoSaveDraft(); // حفظ تلقائي بعد إضافة نص
   }
 
-  void _updateActiveText() { if (_activeTextIndex >= 0 && _activeTextIndex < _textLayers.length) setState(() => _textLayers[_activeTextIndex].text = _textController.text); }
+  void _updateActiveText() {
+    if (_activeTextIndex >= 0 && _activeTextIndex < _textLayers.length) {
+      setState(() => _textLayers[_activeTextIndex].text = _textController.text);
+      _autoSaveDraft(); // حفظ تلقائي عند تغيير النص
+    }
+  }
 
   Future<void> _saveToGallery() async {
     try {
@@ -120,7 +135,9 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         await ImageGallerySaverPlus.saveImage(imageBytes, name: 'elnaseh_post');
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Enregistré dans la galerie'), backgroundColor: Colors.green));
       }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Échec de l\'enregistrement: $e'), backgroundColor: Colors.red)); }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Échec de l\'enregistrement: $e'), backgroundColor: Colors.red));
+    }
   }
 
   Future<void> _publishPost() async {
@@ -142,7 +159,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
       await FirebaseFirestore.instance.collection('announcements').add({
         'title': allText.isEmpty ? 'Nouveau post' : allText,
         'content': allText.isEmpty ? 'Nouveau design' : allText,
-        'image_url': downloadUrl, 
+        'image_url': downloadUrl,
         'tag': 'معلومات',
         'sender': 'الدفاع المدني',
         'likes': 0,
@@ -154,7 +171,11 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Publié avec succès!'), backgroundColor: Colors.green));
       }
-    } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Échec de la publication: $e'), backgroundColor: Colors.red)); } finally { if (mounted) setState(() => _isUploading = false); }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Échec de la publication: $e'), backgroundColor: Colors.red));
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
   }
 
   void _showColorPicker({required bool isBackground}) {
@@ -224,7 +245,12 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                         left: layer.position.dx,
                         top: layer.position.dy,
                         child: GestureDetector(
-                          onPanUpdate: (details) => setState(() { _textLayers[index].position = Offset(_textLayers[index].position.dx + details.delta.dx, _textLayers[index].position.dy + details.delta.dy); }),
+                          onPanUpdate: (details) {
+                            setState(() {
+                              _textLayers[index].position = Offset(_textLayers[index].position.dx + details.delta.dx, _textLayers[index].position.dy + details.delta.dy);
+                            });
+                            _autoSaveDraft(); // حفظ تلقائي عند تحريك النص
+                          },
                           onTap: () { setState(() { _activeTextIndex = index; _textController.text = layer.text; _textFocusNode.requestFocus(); }); },
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -352,7 +378,7 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                     fillColor: const Color(0xFF0A0E17),
                     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8), 
+                      borderRadius: BorderRadius.circular(8),
                       borderSide: BorderSide.none,
                     ),
                     enabledBorder: OutlineInputBorder(
