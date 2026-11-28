@@ -298,7 +298,25 @@ class _PostStudioScreenState extends State<PostStudioScreen> {
                   maxLines: 2,
                   textAlign: TextAlign.center,
                   onChanged: (val) => _updateActiveText(),
-                  decoration: InputDecoration(hintText: 'اكتب النص أو الصقه...', hintStyle: const TextStyle(color: Colors.grey), filled: true, fillColor: const Color(0xFF0A0E17), contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8), border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none)),
+                  decoration: InputDecoration(
+                    hintText: 'اكتب النص أو الصقه...',
+                    hintStyle: const TextStyle(color: Colors.grey),
+                    filled: true,
+                    fillColor: const Color(0xFF0A0E17),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8), 
+                      borderSide: BorderSide.none,
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.cyanAccent, width: 1),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                      borderSide: const BorderSide(color: Colors.cyanAccent, width: 2),
+                    ),
+                  ),
                 ),
               ],
             ),
